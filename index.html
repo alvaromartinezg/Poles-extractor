@@ -10,6 +10,7 @@
 <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 
 <style>
   :root{ --accent:#10b981; }
@@ -28,6 +29,8 @@
   textarea{ width:100%; min-height:160px; border:1px solid #d1d5db; border-radius:10px; padding:12px; }
   .pill{ background:#e5e7eb; padding:6px 10px; border-radius:999px; font-size:12px; }
   .muted{ color:#6b7280; }
+  .status{ font-size:12px; color:#374151; }
+  .ok{ color:#059669; } .bad{ color:#dc2626; }
 </style>
 </head>
 <body>
@@ -50,23 +53,39 @@
 
 <div class="card">
   <div class="row muted" style="margin-bottom:8px;">
-    <span>La app intentará cargar automáticamente <b>postes_01.csv</b> y <b>postes_02.csv</b> si están en la misma carpeta. O puedes cargar un CSV alterno aquí:</span>
+    <span>La app intentará cargar automáticamente <b>postes_01.csv</b> y <b>postes_02.csv</b> (misma carpeta). También puedes cargar CSV(s) manualmente:</span>
     <input id="filePosts" type="file" accept=".csv" multiple>
   </div>
-  <div id="map" style="display:none;"></div>
+  <div class="status">
+    <div id="statusPosts">Postes cargados: <b>0</b></div>
+    <div id="statusLine">Línea: <b class="bad">no cargada</b></div>
+    <div id="statusResult">Filtrados: <b>0</b></div>
+  </div>
+  <div id="map" style="display:none; margin-top:10px;"></div>
 </div>
 
 <div class="card">
-  <textarea id="output" placeholder="Aquí aparecerán las coordenadas encontradas (Nombre;Lat;Lon;Distancia_m)..."></textarea>
+  <textarea id="output" placeholder="Nombre;Lat;Lon;Distancia_m"></textarea>
 </div>
 
 <script>
 (function(){
   const DEFAULT_PARTS = ["postes_01.csv","postes_02.csv"];
-  let postes = [];   // [{name, lat, lon}]
-  let filtered = [];
-  let line = null;
+  let postes = [];     // [{name, lat, lon}]
+  let filtered = [];   // [{name, lat, lon, dist}]
+  let line = null;     // GeoJSON LineString
   let map, layerLine, layerPostesFiltered;
+
+  // ---------- Estado UI ----------
+  const elBase = document.getElementById("baseName");
+  const stPosts = document.getElementById("statusPosts");
+  const stLine  = document.getElementById("statusLine");
+  const stRes   = document.getElementById("statusResult");
+  function setPostsCount(n){ stPosts.innerHTML = "Postes cargados: <b>"+n+"</b>"; }
+  function setLineLoaded(ok){
+    stLine.innerHTML = "Línea: <b class='"+(ok?"ok":"bad")+"'>"+(ok?"cargada":"no cargada")+"</b>";
+  }
+  function setResultCount(n){ stRes.innerHTML = "Filtrados: <b>"+n+"</b>"; }
 
   // ---------- Utilidades ----------
   async function fetchText(url){
@@ -75,40 +94,39 @@
     return await r.text();
   }
 
-  function parseCSV(text){
-    const lines = text.split(/\\r?\\n/).filter(l => l.trim().length>0);
-    if(lines.length<=1) return [];
+  function parseCSVWithPapa(text){
     const out = [];
-    // Detect header indexes (Nombre,Latitud,Longitud)
-    const header = lines[0].split(",");
-    const idxName = header.findIndex(h=>/nombre/i.test(h));
-    const idxLat = header.findIndex(h=>/lat/i.test(h));
-    const idxLon = header.findIndex(h=>/lon/i.test(h));
-    for(let i=1;i<lines.length;i++){
-      const p = lines[i].split(",");
-      const name = (idxName>=0 && p[idxName]!==undefined)? p[idxName] : "Sin nombre";
-      const lat = parseFloat(idxLat>=0 ? p[idxLat] : p[1]);
-      const lon = parseFloat(idxLon>=0 ? p[idxLon] : p[2]);
-      if(!isNaN(lat) && !isNaN(lon)) out.push({name, lat, lon});
-    }
+    Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      worker: false,   // puedes poner true si lo prefieres
+      step: (row)=>{
+        const r = row.data;
+        const name = (r.Nombre ?? r.name ?? r.NAME ?? "Sin nombre").toString();
+        const lat  = parseFloat(r.Latitud ?? r.lat ?? r.LAT);
+        const lon  = parseFloat(r.Longitud ?? r.lon ?? r.LON);
+        if(!isNaN(lat) && !isNaN(lon)) out.push({name, lat, lon});
+      }
+    });
     return out;
   }
 
   async function loadDefaultParts(){
-    // Carga postes_01.csv y postes_02.csv (si existen)
     let loaded = 0;
+    let total = 0;
     for(const part of DEFAULT_PARTS){
       try{
         const txt = await fetchText(part);
-        const arr = parseCSV(txt);
+        const arr = parseCSVWithPapa(txt);
         postes.push(...arr);
-        loaded += arr.length;
+        total += arr.length;
       }catch(e){
         console.warn("No se encontró", part, e);
       }
     }
-    if(loaded>0){
-      document.getElementById("baseName").textContent = `postes_01.csv + postes_02.csv (${loaded} pts)`;
+    if(total>0){
+      elBase.textContent = `postes_01.csv + postes_02.csv (${total} pts)`;
+      setPostsCount(total);
     }
   }
 
@@ -134,24 +152,33 @@
 
   function computeFiltered(radiusM){
     if(!line || !postes.length) return [];
-    const ls = line.geometry;
+    const ls = line.geometry; // GeoJSON LineString geometry
     return postes.map(p => {
-        const d = turf.pointToLineDistance(turf.point([p.lon??p.lon, p.lat??p.lat] || [p.lon, p.lat]), ls, {units:"meters"});
-        const dist = turf.pointToLineDistance(turf.point([p.lon? p.lon : p.lon, p.lat? p.lat : p.lat]), ls, {units:"meters"});
+        // *** CORRECTO: [lon, lat] ***
+        const dist = turf.pointToLineDistance(turf.point([p.lon ?? p.Longitud ?? p.lon, p.lat ?? p.Latitud ?? p.lat] ? [p.lon, p.lat] : [p.lon, p.lat], {bbox:false}), ls, {units:"meters"});
         return {...p, dist};
       })
       .filter(p => p.dist <= radiusM)
       .sort((a,b)=>a.dist-b.dist);
   }
 
+  // versión limpia del compute (la anterior con ?? es innecesaria)
+  function computeFilteredClean(radiusM){
+    const ls = line.geometry;
+    return postes.map(p=>{
+      const dist = turf.pointToLineDistance(turf.point([p.lon, p.lat]), ls, {units:"meters"});
+      return {...p, dist};
+    }).filter(p=>p.dist<=radiusM).sort((a,b)=>a.dist-b.dist);
+  }
+
   function resultToText(rows){
-    return rows.map(r => `${r.name};${r.lat.toFixed(6)};${r.lon.toFixed(6)};${r.dist.toFixed(2)}`).join("\\n");
+    return rows.map(r => `${r.name};${r.lat.toFixed(6)};${r.lon.toFixed(6)};${r.dist.toFixed(2)}`).join("\n");
   }
 
   function escapeXml(s){ return s.replace(/[<>&'"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;","'":"&apos;",'"':"&quot;"}[c])); }
 
   function buildKML(rows){
-    const header = `<?xml version="1.0" encoding="UTF-8"?>\\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>`;
+    const header = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>`;
     const footer = `</Document></kml>`;
     const style = `<Style id="line"><LineStyle><color>ff00aaff</color><width>3</width></LineStyle></Style>
                    <Style id="pt"><IconStyle><color>ff10b981</color><scale>1.1</scale>
@@ -175,25 +202,31 @@
     else kmlText = await file.text();
     const gj = parseKmlTextToGeoJSON(kmlText);
     line = lineStringFromGeojson(gj);
+    setLineLoaded(!!line);
     if(!line){ alert("No se encontró una LineString en el archivo."); return; }
     alert("Línea cargada correctamente.");
   });
 
-  // Carga manual de CSVs (una o varias partes)
+  // Carga manual de CSV(s)
   document.getElementById("filePosts").addEventListener("change", async (ev)=>{
     postes = [];
     for(const file of ev.target.files){
       const txt = await file.text();
-      postes.push(...parseCSV(txt));
+      postes.push(...parseCSVWithPapa(txt));
     }
-    document.getElementById("baseName").textContent = `(${postes.length} pts cargados manualmente)`;
+    elBase.textContent = `(${postes.length} pts cargados manualmente)`;
+    setPostsCount(postes.length);
     alert("Base de postes cargada: "+postes.length+" puntos.");
   });
 
   document.getElementById("btnExtract").onclick = ()=>{
+    if(!line){ alert("Carga primero la LÍNEA (KMZ/KML)."); return; }
+    if(!postes.length){ alert("No hay postes cargados (revisa postes_01.csv y postes_02.csv o carga manual)."); return; }
     const radius = Number(document.getElementById("radius").value)||20;
-    filtered = postes.length && line ? computeFiltered(radius) : [];
+    // filtered = computeFiltered(radius);  // versión anterior
+    filtered = computeFilteredClean(radius); // versión correcta
     document.getElementById("output").value = resultToText(filtered);
+    setResultCount(filtered.length);
     alert(`Encontrados ${filtered.length} postes dentro de ${radius} m.`);
   };
 
@@ -259,10 +292,10 @@
   (async ()=>{ 
     try { await loadDefaultParts(); } 
     catch(e){ console.warn("Carga automática falló:", e); }
+    setLineLoaded(false);
   })();
 
 })();
 </script>
 </body>
 </html>
-
