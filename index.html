@@ -3,14 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bitel | MT POLE EXTRACTOR</title>
+<title>Bitel | MT Pole Extractor</title>
+
+<!-- Anti-cache del HTML -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="dns-prefetch" href="https://unpkg.com">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
-<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+<script defer src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script defer src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script defer src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 
 <style>
   :root{ --accent:#10b981; }
@@ -26,17 +34,19 @@
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
   input[type="number"], input[type="file"]{ padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; }
   #map{ height:520px; border-radius:12px; }
-  textarea{ width:100%; min-height:160px; border:1px solid #d1d5db; border-radius:10px; padding:12px; }
+  textarea{ width:100%; min-height:180px; border:1px solid #d1d5db; border-radius:10px; padding:12px; }
   .pill{ background:#e5e7eb; padding:6px 10px; border-radius:999px; font-size:12px; }
   .muted{ color:#6b7280; }
   .status{ font-size:12px; color:#374151; }
   .ok{ color:#059669; } .bad{ color:#dc2626; }
+  .kpi{ font-size:13px; margin:6px 0 10px; }
+  .kpi b{ color:#111827; }
 </style>
 </head>
 <body>
 <header>
   <img alt="bitel" src="https://upload.wikimedia.org/wikipedia/commons/4/48/Bitel_logo.svg" onerror="this.style.display='none'">
-  <h1>Filtro de Postes (CSV en ZIP) vs Línea (KMZ/KML)</h1>
+  <h1>BITEL MT pole extractor</h1>
 </header>
 
 <div class="bar">
@@ -53,7 +63,7 @@
 
 <div class="card">
   <div class="row muted" style="margin-bottom:8px;">
-    <span>La app cargará automáticamente <b>postes.csv.zip</b> (misma carpeta). También puedes cargar CSV(s) manualmente:</span>
+    <span>La app cargará <b>postes.csv.zip</b> cuando lo necesite. También puedes cargar CSV(s) manualmente:</span>
     <input id="filePosts" type="file" accept=".csv" multiple>
   </div>
   <div class="status">
@@ -65,27 +75,31 @@
 </div>
 
 <div class="card">
+  <div id="compare" class="kpi muted">Comparación de longitudes: <b>—</b></div>
   <textarea id="output" placeholder="INICIO;lat;lon&#10;Nombre;lat;lon&#10;...&#10;FIN;lat;lon"></textarea>
 </div>
 
 <script>
 (function(){
   const ZIP_NAME = "postes.csv.zip";
-  let postes = [];     // [{name, lat, lon}]
-  let filtered = [];   // [{name, lat, lon, location}]  // location = metros desde el inicio de la línea
-  let line = null;     // GeoJSON Feature<LineString>
+  let postes = [];          // [{name, lat, lon}]
+  let filtered = [];        // [{name, lat, lon, location, distance}]
+  let line = null;          // Feature<LineString>
   let map, layerLine, layerPostesFiltered;
+  let postsLoaded = false;
 
   // ---------- Estado UI ----------
   const elBase = document.getElementById("baseName");
   const stPosts = document.getElementById("statusPosts");
   const stLine  = document.getElementById("statusLine");
   const stRes   = document.getElementById("statusResult");
+  const elCompare = document.getElementById("compare");
   function setPostsCount(n){ stPosts.innerHTML = "Postes cargados: <b>"+n+"</b>"; }
   function setLineLoaded(ok){
     stLine.innerHTML = "Línea: <b class='"+(ok?"ok":"bad")+"'>"+(ok?"cargada":"no cargada")+"</b>";
   }
   function setResultCount(n){ stRes.innerHTML = "Filtrados: <b>"+n+"</b>"; }
+  function setCompareText(t){ elCompare.innerHTML = "Comparación de longitudes: <b>"+t+"</b>"; }
 
   // ---------- Utilidades ----------
   async function fetchBlob(url){
@@ -94,21 +108,24 @@
     return await r.blob();
   }
 
-  function parseCSVWithPapa(text){
-    const out = [];
-    Papa.parse(text, {
-      header: true,
-      skipEmptyLines: true,
-      worker: false,
-      step: (row)=>{
-        const r = row.data;
-        const name = (r.Nombre ?? r.name ?? r.NAME ?? "Sin nombre").toString();
-        const lat  = parseFloat(r.Latitud ?? r.lat ?? r.LAT);
-        const lon  = parseFloat(r.Longitud ?? r.lon ?? r.LON);
-        if(!isNaN(lat) && !isNaN(lon)) out.push({name, lat, lon});
-      }
+  // PapaParse en worker y en streaming
+  function parseCSVWithPapaAsync(text){
+    return new Promise((resolve)=>{
+      const out = [];
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        worker: true,
+        step: (row)=>{
+          const r = row.data;
+          const name = (r.Nombre ?? r.name ?? r.NAME ?? "Sin nombre").toString();
+          const lat  = parseFloat(r.Latitud ?? r.lat ?? r.LAT);
+          const lon  = parseFloat(r.Longitud ?? r.lon ?? r.LON);
+          if(!isNaN(lat) && !isNaN(lon)) out.push({name, lat, lon});
+        },
+        complete: ()=> resolve(out)
+      });
     });
-    return out;
   }
 
   async function loadCSVFromZip(zipName = ZIP_NAME){
@@ -117,7 +134,21 @@
     const entry = Object.keys(zip.files).find(n => n.toLowerCase().endsWith(".csv"));
     if(!entry) throw new Error("El ZIP no contiene un CSV");
     const csvText = await zip.files[entry].async("text");
-    return parseCSVWithPapa(csvText);
+    return await parseCSVWithPapaAsync(csvText);
+  }
+
+  async function ensurePostsLoaded(){
+    if(postsLoaded) return;
+    try{
+      postes = await loadCSVFromZip(ZIP_NAME);
+      postsLoaded = true;
+      setPostsCount(postes.length);
+      elBase.textContent = `${ZIP_NAME} (${postes.length} pts)`;
+    }catch(e){
+      console.warn("No se pudo cargar postes.csv.zip automáticamente:", e);
+      elBase.textContent = `${ZIP_NAME} (no cargado)`;
+      alert("No se pudo cargar postes.csv.zip. Puedes cargar CSV(s) manualmente.");
+    }
   }
 
   async function readKMZtoKMLText(file){
@@ -140,30 +171,51 @@
     return null;
   }
 
+  // --- Prefiltro por BBOX + margen ---
+  function metersToLatDeg(m){ return m / 111320; }
+  function metersToLonDegAtLat(m, latDeg){
+    const k = 111320 * Math.cos(latDeg * Math.PI/180);
+    return m / (k === 0 ? 1 : k);
+  }
+  function bboxWithMargin(lineFeature, marginM){
+    const [minLon, minLat, maxLon, maxLat] = turf.bbox(lineFeature);
+    const midLat = (minLat + maxLat)/2;
+    const dLat = metersToLatDeg(marginM);
+    const dLon = metersToLonDegAtLat(marginM, midLat);
+    return [minLon - dLon, minLat - dLat, maxLon + dLon, maxLat + dLat];
+  }
+  function preselectByBbox(points, bbox){
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    return points.filter(p => (
+      p.lat >= minLat && p.lat <= maxLat &&
+      p.lon >= minLon && p.lon <= maxLon
+    ));
+  }
+
+  // --- Cálculo final (solo sobre candidatos del bbox) ---
   function computeAlongLine(radiusM){
-  if(!line || !postes.length) return [];
-  const startCoord = line.geometry.coordinates[0];
-  const startPt = turf.point(startCoord);
+    if(!line || !postes.length) return [];
+    const bbox = bboxWithMargin(line, radiusM + 30); // holgura
+    const candidates = preselectByBbox(postes, bbox);
 
-  return postes.map(p=>{
-    const pt = turf.point([p.lon, p.lat]);
+    const startCoord = line.geometry.coordinates[0];
+    const startPt = turf.point(startCoord);
+    const out = [];
 
-    // Distancia perpendicular real en metros (para filtrar)
-    const distM = turf.pointToLineDistance(pt, line, {units: "meters"});
+    for(const p of candidates){
+      const pt = turf.point([p.lon, p.lat]);
+      const distM = turf.pointToLineDistance(pt, line, {units:"meters"});
+      if(distM > radiusM) continue;
 
-    // Proyección del poste sobre la línea (punto “pegado” a la línea)
-    const proj = turf.nearestPointOnLine(line, pt, {units: "meters"});
+      const proj = turf.nearestPointOnLine(line, pt, {units:"meters"});
+      const slice = turf.lineSlice(startPt, proj, line);
+      const locM  = turf.length(slice, {units:"kilometers"}) * 1000;
 
-    // Posición a lo largo de la línea (metros desde el inicio)
-    const slice = turf.lineSlice(startPt, proj, line);
-    const locM  = turf.length(slice, {units: "kilometers"}) * 1000;
-
-    return { ...p, distance: distM, location: locM };
-  })
-  .filter(p => p.distance <= radiusM)      // Dentro del radio, p.ej. 20 m
-  .sort((a,b) => a.location - b.location); // Orden natural desde el INICIO
-}
-
+      out.push({ ...p, distance: distM, location: locM });
+    }
+    out.sort((a,b)=> a.location - b.location);
+    return out;
+  }
 
   function resultToTextOrdered(rows){
     if(!line) return "";
@@ -193,10 +245,9 @@
     return header + style + linePlm + ptsPlm + footer;
   }
 
-  function showLengthComparison(rows){
-    // Longitud de la línea original
-    const originalLenM = turf.length(line, {units:"kilometers"}) * 1000;
-    // Línea generada: INICIO -> postes ordenados -> FIN
+  function updateLengthComparison(rows){
+    if(!line){ setCompareText("—"); return; }
+    const originalLenM  = turf.length(line, {units:"kilometers"}) * 1000;
     const start = line.geometry.coordinates[0];
     const end   = line.geometry.coordinates[line.geometry.coordinates.length-1];
     const genCoords = [start, ...rows.map(r=>[r.lon, r.lat]), end];
@@ -205,12 +256,7 @@
         : 0;
     const dif = generatedLenM - originalLenM;
     const f = n => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,".");
-    alert(
-      `Comparación de longitudes:\n` +
-      `• Línea original: ${f(originalLenM)} m\n` +
-      `• Línea generada (uniendo postes): ${f(generatedLenM)} m\n` +
-      `• Diferencia: ${f(dif)} m`
-    );
+    setCompareText(`Original: ${f(originalLenM)} m | Generada (uniendo postes): ${f(generatedLenM)} m | Δ: ${f(dif)} m`);
   }
 
   // ---------- Eventos UI ----------
@@ -225,7 +271,7 @@
     line = lineStringFromGeojson(gj);
     setLineLoaded(!!line);
     if(!line){ alert("No se encontró una LineString en el archivo."); return; }
-    alert("Línea cargada correctamente.");
+    setCompareText("—");
   });
 
   // Carga manual de CSV(s) (fallback)
@@ -233,23 +279,25 @@
     postes = [];
     for(const file of ev.target.files){
       const txt = await file.text();
-      postes.push(...parseCSVWithPapa(txt));
+      const arr = await parseCSVWithPapaAsync(txt);
+      postes.push(...arr);
     }
+    postsLoaded = true;
     setPostsCount(postes.length);
     elBase.textContent = `Cargados manualmente (${postes.length} pts)`;
     alert("Base de postes cargada: "+postes.length+" puntos.");
   });
 
-  document.getElementById("btnExtract").onclick = ()=>{
+  document.getElementById("btnExtract").onclick = async ()=>{
     if(!line){ alert("Carga primero la LÍNEA (KMZ/KML)."); return; }
-    if(!postes.length){ alert("No hay postes cargados (revisa postes.csv.zip o carga manual)."); return; }
+    if(!postsLoaded){ await ensurePostsLoaded(); if(!postsLoaded) return; }
+
     const radius = Number(document.getElementById("radius").value)||20;
     filtered = computeAlongLine(radius);
-    // Generar texto: INICIO, postes, FIN (sin distancias)
+
     document.getElementById("output").value = resultToTextOrdered(filtered);
     setResultCount(filtered.length);
-    // Ventana emergente con comparación de longitudes
-    showLengthComparison(filtered);
+    updateLengthComparison(filtered);
   };
 
   document.getElementById("btnCopy").onclick = async ()=>{
@@ -310,19 +358,8 @@
     }
   };
 
-  // ---------- Carga automática del ZIP ----------
-  window.addEventListener("load", async ()=>{
-    try{
-      postes = await loadCSVFromZip(ZIP_NAME);
-      setPostsCount(postes.length);
-      elBase.textContent = `${ZIP_NAME} (${postes.length} pts)`;
-    }catch(e){
-      console.warn("No se pudo cargar postes.csv.zip automáticamente:", e);
-      elBase.textContent = `${ZIP_NAME} (no cargado)`;
-    }
-    setLineLoaded(false);
-  });
-
+  // Al cargar, NO descargamos el ZIP; se hará on-demand.
+  setLineLoaded(false);
 })();
 </script>
 </body>
