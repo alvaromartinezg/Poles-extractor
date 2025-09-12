@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bitel | MT Pole Extractor</title>
+<title>BITEL MT pole extractor</title>
 
 <!-- Anti-cache del HTML -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 
+<!-- Pequeñas optimizaciones de red -->
 <link rel="preconnect" href="https://unpkg.com">
 <link rel="dns-prefetch" href="https://unpkg.com">
 
@@ -22,22 +23,24 @@
 
 <style>
   :root{ --accent:#10b981; }
+  *{ box-sizing:border-box; }
   body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif; background:#f3f4f6; color:#111827; margin:0; }
   header{ display:flex; align-items:center; gap:12px; padding:20px; justify-content:center;}
-  header img{ height:56px; }
+  header img{ height:48px; }
   h1{ font-size:22px; margin:0; font-weight:700; }
   .bar{display:flex; gap:12px; justify-content:center; padding:16px; flex-wrap:wrap;}
   .btn{ background:#2d2d2d; color:white; border:none; padding:12px 16px; border-radius:10px; cursor:pointer; font-weight:600; }
   .btn.secondary{ background:#6b7280; }
   .btn.accent{ background:var(--accent); }
+  .btn:disabled{ opacity:.6; cursor:not-allowed; }
   .card{background:white; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,.08); width:min(1100px,92vw); margin:0 auto 18px; padding:16px;}
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
   input[type="number"], input[type="file"]{ padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; }
   #map{ height:520px; border-radius:12px; }
-  textarea{ width:100%; min-height:180px; border:1px solid #d1d5db; border-radius:10px; padding:12px; }
+  textarea{ width:100%; min-height:180px; border:1px solid #d1d5db; border-radius:10px; padding:12px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
   .pill{ background:#e5e7eb; padding:6px 10px; border-radius:999px; font-size:12px; }
   .muted{ color:#6b7280; }
-  .status{ font-size:12px; color:#374151; }
+  .status{ font-size:12px; color:#374151; display:grid; grid-auto-flow:column; gap:18px; width:max-content; }
   .ok{ color:#059669; } .bad{ color:#dc2626; }
   .kpi{ font-size:13px; margin:6px 0 10px; }
   .kpi b{ color:#111827; }
@@ -45,7 +48,6 @@
 </head>
 <body>
 <header>
-  <img alt="bitel" src="https://upload.wikimedia.org/wikipedia/commons/4/48/Bitel_logo.svg" onerror="this.style.display='none'">
   <h1>BITEL MT pole extractor</h1>
 </header>
 
@@ -108,7 +110,7 @@
     return await r.blob();
   }
 
-  // PapaParse en worker y en streaming
+  // PapaParse en worker (no bloquea la UI)
   function parseCSVWithPapaAsync(text){
     return new Promise((resolve)=>{
       const out = [];
@@ -137,6 +139,7 @@
     return await parseCSVWithPapaAsync(csvText);
   }
 
+  // ← ESTA ES LA FUNCIÓN QUE YA TIENES
   async function ensurePostsLoaded(){
     if(postsLoaded) return;
     try{
@@ -272,6 +275,8 @@
     setLineLoaded(!!line);
     if(!line){ alert("No se encontró una LineString en el archivo."); return; }
     setCompareText("—");
+    // PRECARGA la base justo después de cargar la línea
+    await ensurePostsLoaded();
   });
 
   // Carga manual de CSV(s) (fallback)
@@ -358,8 +363,17 @@
     }
   };
 
-  // Al cargar, NO descargamos el ZIP; se hará on-demand.
+  // Estado inicial
   setLineLoaded(false);
+
+  // PRECARGA en segundo plano al cargar la página (sin bloquear la UI)
+  window.addEventListener('load', ()=>{
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(()=>ensurePostsLoaded(), {timeout: 3000});
+    } else {
+      setTimeout(()=>ensurePostsLoaded(), 1200);
+    }
+  });
 })();
 </script>
 </body>
