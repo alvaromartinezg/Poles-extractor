@@ -141,20 +141,29 @@
   }
 
   function computeAlongLine(radiusM){
-    if(!line || !postes.length) return [];
-    const ls = line.geometry; // GeoJSON LineString
-    return postes.map(p=>{
-      const pt = turf.point([p.lon, p.lat]);
-      const npl = turf.nearestPointOnLine(ls, pt, {units:"meters"});   // incluye .properties.location (km) y .properties.distance (m)
-      return {
-        ...p,
-        distance: npl.properties.distance,                // m, distancia perpendicular (para filtrar)
-        location: npl.properties.location * 1000          // m, posición a lo largo de la línea
-      };
-    })
-    .filter(p => p.distance <= radiusM)
-    .sort((a,b)=> a.location - b.location);
-  }
+  if(!line || !postes.length) return [];
+  const startCoord = line.geometry.coordinates[0];
+  const startPt = turf.point(startCoord);
+
+  return postes.map(p=>{
+    const pt = turf.point([p.lon, p.lat]);
+
+    // Distancia perpendicular real en metros (para filtrar)
+    const distM = turf.pointToLineDistance(pt, line, {units: "meters"});
+
+    // Proyección del poste sobre la línea (punto “pegado” a la línea)
+    const proj = turf.nearestPointOnLine(line, pt, {units: "meters"});
+
+    // Posición a lo largo de la línea (metros desde el inicio)
+    const slice = turf.lineSlice(startPt, proj, line);
+    const locM  = turf.length(slice, {units: "kilometers"}) * 1000;
+
+    return { ...p, distance: distM, location: locM };
+  })
+  .filter(p => p.distance <= radiusM)      // Dentro del radio, p.ej. 20 m
+  .sort((a,b) => a.location - b.location); // Orden natural desde el INICIO
+}
+
 
   function resultToTextOrdered(rows){
     if(!line) return "";
