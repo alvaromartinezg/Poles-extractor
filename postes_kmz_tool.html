@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bitel | Filtro de Postes vs Línea KMZ</title>
+<title>Bitel | Postes CSV (2 partes) vs Línea KMZ/KML</title>
 
-<!-- Librerías CDN: Leaflet (mapa), Turf (distancias geoesp.), JSZip (KMZ), togeojson (leer KML) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
@@ -13,19 +12,18 @@
 <script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
 
 <style>
-  :root{ --primary:#1f2937; --accent:#10b981; }
-  body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',sans-serif; background:#f3f4f6; color:#111827; margin:0; }
-  header{ display:flex; align-items:center; gap:12px; padding:28px 24px 10px; justify-content:center;}
+  :root{ --accent:#10b981; }
+  body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif; background:#f3f4f6; color:#111827; margin:0; }
+  header{ display:flex; align-items:center; gap:12px; padding:20px; justify-content:center;}
   header img{ height:56px; }
   h1{ font-size:22px; margin:0; font-weight:700; }
   .bar{display:flex; gap:12px; justify-content:center; padding:16px; flex-wrap:wrap;}
   .btn{ background:#2d2d2d; color:white; border:none; padding:12px 16px; border-radius:10px; cursor:pointer; font-weight:600; }
   .btn.secondary{ background:#6b7280; }
   .btn.accent{ background:var(--accent); }
-  .btn:disabled{ opacity:.5; cursor:not-allowed;}
   .card{background:white; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,.08); width:min(1100px,92vw); margin:0 auto 18px; padding:16px;}
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
-  input[type="number"], input[type="text"]{ padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; min-width:180px; }
+  input[type="number"], input[type="file"]{ padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; }
   #map{ height:520px; border-radius:12px; }
   textarea{ width:100%; min-height:160px; border:1px solid #d1d5db; border-radius:10px; padding:12px; }
   .pill{ background:#e5e7eb; padding:6px 10px; border-radius:999px; font-size:12px; }
@@ -34,18 +32,17 @@
 </head>
 <body>
 <header>
-  <!-- Solo para estética; si no carga el logo, se oculta -->
   <img alt="bitel" src="https://upload.wikimedia.org/wikipedia/commons/4/48/Bitel_logo.svg" onerror="this.style.display='none'">
-  <h1>Selecciona un archivo KMZ/KML (línea) y filtra postes cercanos</h1>
+  <h1>Filtro de Postes CSV (2 partes) vs Línea (KMZ/KML)</h1>
 </header>
 
 <div class="bar">
   <input id="fileLine" type="file" accept=".kmz,.kml" hidden />
-  <button class="btn accent" id="btnPickLine">Seleccionar KMZ/KML (Línea)</button>
-  <span class="pill">Base de postes: <b id="baseName">23_Estructuras_MT.kml</b></span>
-  <label class="pill">Radio (m): <input id="radius" type="number" value="20" min="1" step="1"></label>
-  <button class="btn" id="btnExtract">Extraer coordenadas</button>
-  <button class="btn" id="btnCopy">Copiar resultado</button>
+  <button class="btn accent" id="btnPickLine">Seleccionar Línea KMZ/KML</button>
+  <span class="pill">Base: <b id="baseName">postes_01.csv + postes_02.csv</b></span>
+  <label class="pill">Radio (m): <input id="radius" type="number" value="20" min="1"></label>
+  <button class="btn" id="btnExtract">Extraer</button>
+  <button class="btn" id="btnCopy">Copiar</button>
   <button class="btn" id="btnDownloadTXT">Descargar TXT</button>
   <button class="btn" id="btnDownloadKMZ">Descargar KMZ</button>
   <button class="btn secondary" id="btnShowMap">Ver en mapa</button>
@@ -53,8 +50,8 @@
 
 <div class="card">
   <div class="row muted" style="margin-bottom:8px;">
-    <span>La app intentará cargar la base de postes <b>23_Estructuras_MT.kml</b> desde la misma carpeta que este HTML. Si no existe, puedes cargarla manualmente.</span>
-    <input id="filePosts" type="file" accept=".kml" style="margin-left:auto;">
+    <span>La app intentará cargar automáticamente <b>postes_01.csv</b> y <b>postes_02.csv</b> si están en la misma carpeta. O puedes cargar un CSV alterno aquí:</span>
+    <input id="filePosts" type="file" accept=".csv" multiple>
   </div>
   <div id="map" style="display:none;"></div>
 </div>
@@ -65,58 +62,95 @@
 
 <script>
 (function(){
-  const BASE_FILENAME = "23_Estructuras_MT.kml"; // nombre suministrado por ti
-  let postes = [];     // [{name, lon, lat}]
-  let filtered = [];   // [{name, lon, lat, dist}]
-  let line = null;     // GeoJSON LineString
+  const DEFAULT_PARTS = ["postes_01.csv","postes_02.csv"];
+  let postes = [];   // [{name, lat, lon}]
+  let filtered = [];
+  let line = null;
   let map, layerLine, layerPostesFiltered;
 
   // ---------- Utilidades ----------
-  function parseKmlTextToGeoJSON(kmlText){
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(kmlText, "text/xml");
-    return toGeoJSON.kml(doc);
+  async function fetchText(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if(!r.ok) throw new Error("No se pudo cargar " + url);
+    return await r.text();
   }
-  async function readAsText(file){ return await file.text(); }
+
+  function parseCSV(text){
+    const lines = text.split(/\\r?\\n/).filter(l => l.trim().length>0);
+    if(lines.length<=1) return [];
+    const out = [];
+    // Detect header indexes (Nombre,Latitud,Longitud)
+    const header = lines[0].split(",");
+    const idxName = header.findIndex(h=>/nombre/i.test(h));
+    const idxLat = header.findIndex(h=>/lat/i.test(h));
+    const idxLon = header.findIndex(h=>/lon/i.test(h));
+    for(let i=1;i<lines.length;i++){
+      const p = lines[i].split(",");
+      const name = (idxName>=0 && p[idxName]!==undefined)? p[idxName] : "Sin nombre";
+      const lat = parseFloat(idxLat>=0 ? p[idxLat] : p[1]);
+      const lon = parseFloat(idxLon>=0 ? p[idxLon] : p[2]);
+      if(!isNaN(lat) && !isNaN(lon)) out.push({name, lat, lon});
+    }
+    return out;
+  }
+
+  async function loadDefaultParts(){
+    // Carga postes_01.csv y postes_02.csv (si existen)
+    let loaded = 0;
+    for(const part of DEFAULT_PARTS){
+      try{
+        const txt = await fetchText(part);
+        const arr = parseCSV(txt);
+        postes.push(...arr);
+        loaded += arr.length;
+      }catch(e){
+        console.warn("No se encontró", part, e);
+      }
+    }
+    if(loaded>0){
+      document.getElementById("baseName").textContent = `postes_01.csv + postes_02.csv (${loaded} pts)`;
+    }
+  }
+
   async function readKMZtoKMLText(file){
     const zip = await JSZip.loadAsync(file);
     const kmlEntry = Object.keys(zip.files).find(n => n.toLowerCase().endsWith(".kml"));
     if(!kmlEntry) throw new Error("El KMZ no contiene un KML");
     return await zip.files[kmlEntry].async("text");
   }
+
+  function parseKmlTextToGeoJSON(kmlText){
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(kmlText, "text/xml");
+    return toGeoJSON.kml(doc);
+  }
+
   function lineStringFromGeojson(gj){
     for(const f of gj.features||[]){
       if(f.geometry && f.geometry.type==="LineString") return f;
     }
     return null;
   }
-  function pointsFromPostsKML(gj){
-    const pts = [];
-    for(const f of gj.features||[]){
-      if(f.geometry && f.geometry.type==="Point"){
-        const [lon, lat] = f.geometry.coordinates;
-        const name = (f.properties && (f.properties.name||f.properties.Name)) || "Sin nombre";
-        pts.push({name, lon, lat});
-      }
-    }
-    return pts;
-  }
+
   function computeFiltered(radiusM){
     if(!line || !postes.length) return [];
     const ls = line.geometry;
     return postes.map(p => {
-        const d = turf.pointToLineDistance(turf.point([p.lon, p.lat]), ls, {units:"meters"});
-        return {...p, dist: d};
+        const d = turf.pointToLineDistance(turf.point([p.lon??p.lon, p.lat??p.lat] || [p.lon, p.lat]), ls, {units:"meters"});
+        const dist = turf.pointToLineDistance(turf.point([p.lon? p.lon : p.lon, p.lat? p.lat : p.lat]), ls, {units:"meters"});
+        return {...p, dist};
       })
       .filter(p => p.dist <= radiusM)
       .sort((a,b)=>a.dist-b.dist);
   }
+
   function resultToText(rows){
     return rows.map(r => `${r.name};${r.lat.toFixed(6)};${r.lon.toFixed(6)};${r.dist.toFixed(2)}`).join("\\n");
   }
+
   function escapeXml(s){ return s.replace(/[<>&'"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;","'":"&apos;",'"':"&quot;"}[c])); }
+
   function buildKML(rows){
-    // KML simple con la línea y los puntos filtrados
     const header = `<?xml version="1.0" encoding="UTF-8"?>\\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>`;
     const footer = `</Document></kml>`;
     const style = `<Style id="line"><LineStyle><color>ff00aaff</color><width>3</width></LineStyle></Style>
@@ -131,20 +165,6 @@
     return header + style + linePlm + ptsPlm + footer;
   }
 
-  async function tryLoadBaseFromSameFolder(){
-    try{
-      const res = await fetch(BASE_FILENAME, {cache:"no-store"});
-      if(res.ok){
-        const txt = await res.text();
-        const gj = parseKmlTextToGeoJSON(txt);
-        postes = pointsFromPostsKML(gj);
-        document.getElementById("baseName").textContent = BASE_FILENAME + " ("+postes.length+" pts)";
-      }else{
-        console.warn("No se encontró la base KML en la misma carpeta.");
-      }
-    }catch(e){ console.warn("No se pudo cargar la base:", e); }
-  }
-
   // ---------- Eventos UI ----------
   document.getElementById("btnPickLine").onclick = ()=> document.getElementById("fileLine").click();
 
@@ -152,41 +172,38 @@
     const file = ev.target.files[0]; if(!file) return;
     let kmlText;
     if(file.name.toLowerCase().endsWith(".kmz")) kmlText = await readKMZtoKMLText(file);
-    else kmlText = await readAsText(file);
+    else kmlText = await file.text();
     const gj = parseKmlTextToGeoJSON(kmlText);
     line = lineStringFromGeojson(gj);
     if(!line){ alert("No se encontró una LineString en el archivo."); return; }
     alert("Línea cargada correctamente.");
   });
 
-  // Carga manual de base de postes (KML)
+  // Carga manual de CSVs (una o varias partes)
   document.getElementById("filePosts").addEventListener("change", async (ev)=>{
-    const file = ev.target.files[0]; if(!file) return;
-    if(!file.name.toLowerCase().endsWith(".kml")){ alert("Cargue un KML con los postes."); return; }
-    const txt = await readAsText(file);
-    const gj = parseKmlTextToGeoJSON(txt);
-    postes = pointsFromPostsKML(gj);
-    document.getElementById("baseName").textContent = file.name + " ("+postes.length+" pts)";
+    postes = [];
+    for(const file of ev.target.files){
+      const txt = await file.text();
+      postes.push(...parseCSV(txt));
+    }
+    document.getElementById("baseName").textContent = `(${postes.length} pts cargados manualmente)`;
     alert("Base de postes cargada: "+postes.length+" puntos.");
   });
 
-  // Ejecuta el filtrado
   document.getElementById("btnExtract").onclick = ()=>{
     const radius = Number(document.getElementById("radius").value)||20;
-    filtered = computeFiltered(radius);
+    filtered = postes.length && line ? computeFiltered(radius) : [];
     document.getElementById("output").value = resultToText(filtered);
-    alert("Encontrados "+filtered.length+" postes dentro de " + radius + " m.");
+    alert(`Encontrados ${filtered.length} postes dentro de ${radius} m.`);
   };
 
-  // Copiar resultado
   document.getElementById("btnCopy").onclick = async ()=>{
-    const txt = document.getElementById("output").value;
+    const txt = document.getElementById("output").value || "";
     if(!txt){ alert("No hay contenido para copiar"); return; }
     await navigator.clipboard.writeText(txt);
     alert("Resultado copiado al portapapeles.");
   };
 
-  // Descargar TXT
   document.getElementById("btnDownloadTXT").onclick = ()=>{
     const txt = document.getElementById("output").value || "";
     const blob = new Blob([txt], {type:"text/plain;charset=utf-8"});
@@ -197,9 +214,8 @@
     URL.revokeObjectURL(a.href);
   };
 
-  // Descargar KMZ (zip del KML)
   document.getElementById("btnDownloadKMZ").onclick = async ()=>{
-    if(!filtered.length){ alert("Primero ejecuta 'Extraer coordenadas'"); return; }
+    if(!filtered.length){ alert("Primero ejecuta 'Extraer'"); return; }
     const kml = buildKML(filtered);
     const zip = new JSZip();
     zip.file("postes_filtrados.kml", kml);
@@ -211,7 +227,6 @@
     URL.revokeObjectURL(a.href);
   };
 
-  // Ver en mapa
   document.getElementById("btnShowMap").onclick = ()=>{
     const mapDiv = document.getElementById("map");
     mapDiv.style.display = "block";
@@ -220,9 +235,8 @@
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{ maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
       layerLine = L.geoJSON(null, {style:{color:"#0ea5e9", weight:3}}).addTo(map);
       layerPostesFiltered = L.layerGroup().addTo(map);
-      map.setView([ -9.4, -77.57 ], 12); // fallback
+      map.setView([-9.4, -77.57], 12);
     }
-
     layerLine.clearLayers();
     layerPostesFiltered.clearLayers();
 
@@ -241,20 +255,14 @@
     }
   };
 
-  // Carga automática de la base de postes por nombre
-  (async function tryLoadBase(){
-    try{
-      const res = await fetch(BASE_FILENAME, {cache:"no-store"});
-      if(res.ok){
-        const txt = await res.text();
-        const gj = parseKmlTextToGeoJSON(txt);
-        postes = pointsFromPostsKML(gj);
-        document.getElementById("baseName").textContent = BASE_FILENAME + " ("+postes.length+" pts)";
-      }
-    }catch(e){ /* sin ruido */ }
+  // Carga automática de partes por defecto
+  (async ()=>{ 
+    try { await loadDefaultParts(); } 
+    catch(e){ console.warn("Carga automática falló:", e); }
   })();
 
 })();
 </script>
 </body>
 </html>
+
