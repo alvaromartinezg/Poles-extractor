@@ -53,7 +53,7 @@
 
 <div class="card">
   <div class="row muted" style="margin-bottom:8px;">
-    <span>La app intentará cargar automáticamente <b>postes.csv.zip</b> (misma carpeta). También puedes cargar CSV(s) manualmente:</span>
+    <span>La app cargará automáticamente <b>postes.csv.zip</b> (misma carpeta). También puedes cargar CSV(s) manualmente:</span>
     <input id="filePosts" type="file" accept=".csv" multiple>
   </div>
   <div class="status">
@@ -65,15 +65,15 @@
 </div>
 
 <div class="card">
-  <textarea id="output" placeholder="Nombre;Lat;Lon;Distancia_m"></textarea>
+  <textarea id="output" placeholder="INICIO;lat;lon&#10;Nombre;lat;lon&#10;...&#10;FIN;lat;lon"></textarea>
 </div>
 
 <script>
 (function(){
   const ZIP_NAME = "postes.csv.zip";
   let postes = [];     // [{name, lat, lon}]
-  let filtered = [];   // [{name, lat, lon, dist}]
-  let line = null;     // GeoJSON LineString
+  let filtered = [];   // [{name, lat, lon, location}]  // location = metros desde el inicio de la línea
+  let line = null;     // GeoJSON Feature<LineString>
   let map, layerLine, layerPostesFiltered;
 
   // ---------- Estado UI ----------
@@ -92,11 +92,6 @@
     const r = await fetch(url + "?v=" + Date.now(), {cache:"no-store"});
     if(!r.ok) throw new Error("No se pudo cargar " + url);
     return await r.blob();
-  }
-  async function fetchText(url){
-    const r = await fetch(url + "?v=" + Date.now(), {cache:"no-store"});
-    if(!r.ok) throw new Error("No se pudo cargar " + url);
-    return await r.text();
   }
 
   function parseCSVWithPapa(text){
@@ -145,16 +140,31 @@
     return null;
   }
 
-  function computeFiltered(radiusM){
-    const ls = line.geometry;
+  function computeAlongLine(radiusM){
+    if(!line || !postes.length) return [];
+    const ls = line.geometry; // GeoJSON LineString
     return postes.map(p=>{
-      const dist = turf.pointToLineDistance(turf.point([p.lon, p.lat]), ls, {units:"meters"});
-      return {...p, dist};
-    }).filter(p=>p.dist<=radiusM).sort((a,b)=>a.dist-b.dist);
+      const pt = turf.point([p.lon, p.lat]);
+      const npl = turf.nearestPointOnLine(ls, pt, {units:"meters"});   // incluye .properties.location (km) y .properties.distance (m)
+      return {
+        ...p,
+        distance: npl.properties.distance,                // m, distancia perpendicular (para filtrar)
+        location: npl.properties.location * 1000          // m, posición a lo largo de la línea
+      };
+    })
+    .filter(p => p.distance <= radiusM)
+    .sort((a,b)=> a.location - b.location);
   }
 
-  function resultToText(rows){
-    return rows.map(r => `${r.name};${r.lat.toFixed(6)};${r.lon.toFixed(6)};${r.dist.toFixed(2)}`).join("\n");
+  function resultToTextOrdered(rows){
+    if(!line) return "";
+    const start = line.geometry.coordinates[0];
+    const end   = line.geometry.coordinates[line.geometry.coordinates.length-1];
+    const lines = [];
+    lines.push(`INICIO;${start[1].toFixed(6)};${start[0].toFixed(6)}`);
+    rows.forEach(r => lines.push(`${r.name};${r.lat.toFixed(6)};${r.lon.toFixed(6)}`));
+    lines.push(`FIN;${end[1].toFixed(6)};${end[0].toFixed(6)}`);
+    return lines.join("\n");
   }
 
   function escapeXml(s){ return s.replace(/[<>&'"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;","'":"&apos;",'"':"&quot;"}[c])); }
@@ -172,6 +182,26 @@
     }
     const ptsPlm = rows.map(r=>`<Placemark><name>${escapeXml(r.name)}</name><styleUrl>#pt</styleUrl><Point><coordinates>${r.lon},${r.lat},0</coordinates></Point></Placemark>`).join("");
     return header + style + linePlm + ptsPlm + footer;
+  }
+
+  function showLengthComparison(rows){
+    // Longitud de la línea original
+    const originalLenM = turf.length(line, {units:"kilometers"}) * 1000;
+    // Línea generada: INICIO -> postes ordenados -> FIN
+    const start = line.geometry.coordinates[0];
+    const end   = line.geometry.coordinates[line.geometry.coordinates.length-1];
+    const genCoords = [start, ...rows.map(r=>[r.lon, r.lat]), end];
+    const generatedLenM = genCoords.length >= 2
+        ? turf.length(turf.lineString(genCoords), {units:"kilometers"}) * 1000
+        : 0;
+    const dif = generatedLenM - originalLenM;
+    const f = n => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,".");
+    alert(
+      `Comparación de longitudes:\n` +
+      `• Línea original: ${f(originalLenM)} m\n` +
+      `• Línea generada (uniendo postes): ${f(generatedLenM)} m\n` +
+      `• Diferencia: ${f(dif)} m`
+    );
   }
 
   // ---------- Eventos UI ----------
@@ -205,10 +235,12 @@
     if(!line){ alert("Carga primero la LÍNEA (KMZ/KML)."); return; }
     if(!postes.length){ alert("No hay postes cargados (revisa postes.csv.zip o carga manual)."); return; }
     const radius = Number(document.getElementById("radius").value)||20;
-    filtered = computeFiltered(radius);
-    document.getElementById("output").value = resultToText(filtered);
+    filtered = computeAlongLine(radius);
+    // Generar texto: INICIO, postes, FIN (sin distancias)
+    document.getElementById("output").value = resultToTextOrdered(filtered);
     setResultCount(filtered.length);
-    alert(`Encontrados ${filtered.length} postes dentro de ${radius} m.`);
+    // Ventana emergente con comparación de longitudes
+    showLengthComparison(filtered);
   };
 
   document.getElementById("btnCopy").onclick = async ()=>{
@@ -261,7 +293,7 @@
     if(filtered.length){
       filtered.forEach(p=>{
         L.circleMarker([p.lat, p.lon], {radius:5})
-          .bindPopup(`<b>${p.name}</b><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}<br>${p.dist.toFixed(2)} m`)
+          .bindPopup(`<b>${p.name}</b>`)
           .addTo(layerPostesFiltered);
       });
       const group = L.featureGroup([layerLine, layerPostesFiltered]);
