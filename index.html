@@ -269,7 +269,7 @@
                             const lon = parseFloat(r.Longitud ?? r.lon ?? r.LON ?? r.longitude ?? r.Longitude);
 
                             // Toma el nombre si existe; si no, lo autogenera con coord.
-                            let name = (r.Nombre ?? r.NOMBRE ?? r.name ?? r.NAME ?? r.Titulo ?? r.TITLE ?? r.id ?? r.ID ?? "").toString().trim();
+                            let name = (r.Nombre ?? r.NOMBRE ?? r.name ?? r.NAME ?? r.Titulo ?? r.TITLE ?? r.Poste ?? r.POSTE ?? r.Estructura ?? r.ESTRUCTURA ?? r.id ?? r.ID ?? "").toString().trim();
 
                             if (!isNaN(lat) && !isNaN(lon)) {
                                 if (!name || name.toLowerCase() === "sin nombre") {
