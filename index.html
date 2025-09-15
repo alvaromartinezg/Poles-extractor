@@ -572,33 +572,34 @@
 
             // Construye opciones de selects con los postes extraídos (ordenados por 'location')
             function refreshDesignSelectors() {
-                // Limpia si no hay nada
-                if (!filtered || !filtered.length) {
-                    selStart.innerHTML = "";
-                    selEnd.innerHTML = "";
-                    return;
-                }
+    if (!filtered || !filtered.length || !line) {
+        selStart.innerHTML = "";
+        selEnd.innerHTML = "";
+        return;
+    }
 
-                // Opción fija INICIO = primer poste extraído (índice 0)
-                const optInicio = `<option value="0">INICIO · ${filtered[0].name}</option>`;
-                // Opción fija FIN = último poste extraído (índice n-1)
-                const lastIdx = filtered.length - 1;
-                const optFin = `<option value="${lastIdx}">FIN · ${filtered[lastIdx].name}</option>`;
+    // 🔹 Coordenada real de inicio/fin de la línea
+    const start = line.geometry.coordinates[0]; // [lon,lat]
+    const end   = line.geometry.coordinates[line.geometry.coordinates.length - 1];
 
-                // Resto de postes con su nombre original
-                const cuerpo = filtered.map((p, i) => {
-                    const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
-                    return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
-                }).join("");
+    // 🔹 INICIO muestra la coord. real de la línea, pero mantiene value="0"
+    const optInicio = `<option value="0">INICIO · ${start[1].toFixed(6)}, ${start[0].toFixed(6)}</option>`;
+    const lastIdx = filtered.length - 1;
+    const optFin  = `<option value="${lastIdx}">FIN · ${filtered[lastIdx].name}</option>`;
 
-                // Armado simple: en Origen ponemos INICIO arriba; en Fin ponemos FIN al final
-                selStart.innerHTML = optInicio + cuerpo;
-                selEnd.innerHTML = cuerpo + optFin;
+    const cuerpo = filtered.map((p, i) => {
+        const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
+        return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
+    }).join("");
 
-                // Selecciones por defecto
-                selStart.value = "0";
-                selEnd.value = String(lastIdx);
-            }
+    // INICIO (línea) + postes  /  postes + FIN (poste final)
+    selStart.innerHTML = optInicio + cuerpo;
+    selEnd.innerHTML   = cuerpo + optFin;
+
+    // Por defecto, extremos
+    selStart.value = "0";          // muestra INICIO
+    selEnd.value   = String(lastIdx);
+}
 
 
 
@@ -695,38 +696,53 @@
             }
 
             // Botón: Previsualizar
-            btnPreview.addEventListener("click", () => {
-                const startIdx = parseInt(selStart.value, 10);
-                const endIdx = parseInt(selEnd.value, 10);
-                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
+           btnPreview.addEventListener("click", () => {
+    const startVal = selStart.value;                 // "0" si eligió INICIO
+    const endVal   = selEnd.value;
+    const spacing  = Math.max(5, Number(inputSpacing.value) || 60);
 
-                if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) {
-                    alert("Selecciona origen y fin válidos."); return;
-                }
-                if (startIdx === endIdx) {
-                    alert("Origen y fin no pueden ser el mismo poste."); return;
-                }
-                if (!line) {
-                    alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return;
-                }
+    if (!Number.isInteger(parseInt(endVal, 10))) { alert("Selecciona fin válido."); return; }
+    if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
 
-                // Generar previa (no modifica 'filtered')
-                designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
-                elDesignCount.textContent = String(designGenerated.length);
-                btnInsert.disabled = designGenerated.length === 0;
+    const startIdx = parseInt(startVal, 10);
+    const endIdx   = parseInt(endVal, 10);
 
-                ensureDesignLayer();
-                redrawDesignLayer();
+    if (startIdx === endIdx) { alert("Origen y fin no pueden ser el mismo."); return; }
 
-                // Asegurar visibilidad del mapa con la previa
-                if (map && (designGenerated.length || filtered.length)) {
-                    const group = L.featureGroup([]);
-                    if (layerLine) group.addLayer(layerLine);
-                    if (layerPostesFiltered) group.addLayer(layerPostesFiltered);
-                    if (designLayer) group.addLayer(designLayer);
-                    try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
-                }
-            });
+    // 🔹 ¿La opción visible es INICIO? (la que pusimos en refreshDesignSelectors)
+    const isInicioLine =
+        selStart.selectedIndex >= 0 &&
+        selStart.options[selStart.selectedIndex].textContent.trim().startsWith("INICIO");
+
+    let backupFirst = null;
+    if (isInicioLine && filtered[0]) {
+        // Guardar y reemplazar temporalmente el primer poste por la coord. inicial de la línea
+        backupFirst = { ...filtered[0] };
+        const [lon0, lat0] = line.geometry.coordinates[0];
+        filtered[0] = { ...filtered[0], name: "INICIO", lat: lat0, lon: lon0, location: 0 };
+    }
+
+    // ✅ Reusar tu función existente (por índices)
+    designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
+
+    // Restaurar el primer poste si lo cambiamos
+    if (backupFirst) filtered[0] = backupFirst;
+
+    elDesignCount.textContent = String(designGenerated.length);
+    btnInsert.disabled = designGenerated.length === 0;
+
+    ensureDesignLayer();
+    redrawDesignLayer();
+
+    if (map && (designGenerated.length || filtered.length)) {
+        const group = L.featureGroup([]);
+        if (layerLine) group.addLayer(layerLine);
+        if (layerPostesFiltered) group.addLayer(layerPostesFiltered);
+        if (designLayer) group.addLayer(designLayer);
+        try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
+    }
+});
+
 
             // Botón: Insertar al resultado (modifica 'filtered', TXT/KMZ heredarán esto)
             btnInsert.addEventListener("click", () => {
