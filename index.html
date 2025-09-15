@@ -269,15 +269,14 @@
                             const lon = parseFloat(r.Longitud ?? r.lon ?? r.LON ?? r.longitude ?? r.Longitude);
 
                             // Toma el nombre si existe; si no, lo autogenera con coord.
-                            let name = (r.Nombre ?? r.NOMBRE ?? r.name ?? r.NAME ?? r.Titulo ?? r.TITLE ?? r.Poste ?? r.POSTE ?? r.Estructura ?? r.ESTRUCTURA ?? r.id ?? r.ID ?? "").toString().trim();
+                            // Usar directamente el campo "name" del CSV (es tu primera columna)
+let name = (r.name ?? r.Nombre ?? r.NOMBRE ?? r.NAME ?? "").toString().trim();
 
-                            if (!isNaN(lat) && !isNaN(lon)) {
-                                if (!name || name.toLowerCase() === "sin nombre") {
-                                    // ⚠️ No uses punto y coma aquí para no romper el TXT (usa coma)
-                                    name = `Poste ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-                                }
-                                out.push({ name, lat, lon });
-                            }
+if (!isNaN(lat) && !isNaN(lon)) {
+    if (!name) name = "Poste"; // fallback simple
+    out.push({ name, lat, lon });
+}
+
                         },
 
                         complete: () => resolve(out)
