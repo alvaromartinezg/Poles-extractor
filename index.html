@@ -254,35 +254,32 @@
             }
 
             // PapaParse en worker (no bloquea la UI)
-            function parseCSVWithPapaAsync(text) {
-                return new Promise((resolve) => {
-                    const out = [];
-                    Papa.parse(text, {
-                        header: true,
-                        skipEmptyLines: true,
-                        worker: true,
-                        step: (row) => {
-                            const r = row.data;
+          function parseCSVWithPapaAsync(text) {
+    return new Promise((resolve) => {
+        const out = [];
+        Papa.parse(text, {
+            header: true,
+            skipEmptyLines: true,
+            worker: true,
+            step: (row) => {
+                const r = row.data;
 
-                            // Lee lat/lon con más alias comunes
-                            const lat = parseFloat(r.Latitud ?? r.lat ?? r.LAT ?? r.latitude ?? r.Latitude);
-                            const lon = parseFloat(r.Longitud ?? r.lon ?? r.LON ?? r.longitude ?? r.Longitude);
+                // Lee lat/lon con los alias más comunes
+                const lat = parseFloat(r.Latitud ?? r.lat ?? r.LAT ?? r.latitude ?? r.Latitude);
+                const lon = parseFloat(r.Longitud ?? r.lon ?? r.LON ?? r.longitude ?? r.Longitude);
 
-                            // Toma el nombre si existe; si no, lo autogenera con coord.
-                            // Usar directamente el campo "name" del CSV (es tu primera columna)
-let name = (r.name ?? r.Nombre ?? r.NOMBRE ?? r.NAME ?? "").toString().trim();
+                // ✅ Usar directamente la columna "name" (primera del CSV)
+                let name = (r.name ?? r.Nombre ?? r.NOMBRE ?? r.NAME ?? "").toString().trim();
 
-if (!isNaN(lat) && !isNaN(lon)) {
-    if (!name) name = "Poste"; // fallback simple
-    out.push({ name, lat, lon });
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    if (!name) name = "Poste"; // Fallback simple
+                    out.push({ name, lat, lon });
+                }
+            },
+            complete: () => resolve(out)
+        });
+    });
 }
-
-                        },
-
-                        complete: () => resolve(out)
-                    });
-                });
-            }
 
             async function loadCSVFromZip(zipName = ZIP_NAME) {
                 const blob = await fetchBlob(zipName);
