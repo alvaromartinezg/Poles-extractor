@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BITEL MT pole extractor v2</title>
+    <title>BITEL MT pole extractor + DESIGNER</title>
 
     <!-- Anti-cache del HTML -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -165,7 +165,7 @@
 
 <body>
     <header>
-        <h1>BITEL MT pole extractor</h1>
+        <h1>BITEL MT pole extractor + Designer</h1>
     </header>
 
     <div class="bar">
@@ -535,6 +535,142 @@
             const btnClear = document.getElementById("btnClearDesign");
             const elDesignCount = document.getElementById("designCount");
 
+            // --- Permitir seleccionar INICIO y FIN de la línea en los <select> ---
+            const OPT_START = "LSTART";
+            const OPT_END = "LEND";
+
+            let selectedStartVal = null;
+            let selectedEndVal = null;
+
+            // Devuelve { proj: Feature<Point>, loc: metros desde inicio }
+            function getProjAndLocFromSelector(value) {
+                // Asegura que hay línea
+                if (!line) throw new Error("No hay línea cargada");
+
+                if (value === OPT_START) {
+                    const startCoord = line.geometry.coordinates[0];
+                    return { proj: turf.point(startCoord), loc: 0 };
+                }
+                if (value === OPT_END) {
+                    const endCoord = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+                    return {
+                        proj: turf.point(endCoord),
+                        loc: turf.length(line, { units: "kilometers" }) * 1000
+                    };
+                }
+                // Es un índice de 'filtered'
+                const idx = Number(value);
+                const p = filtered[idx];
+                const proj = projectPointOnLine([p.lon, p.lat]);
+                const loc = locationAlongLineFromStart(proj);
+                return { proj, loc };
+            }
+
+            // Devuelve [lat, lon] para pintar marcadores de selección
+            function getLatLonFromSelector(value) {
+                if (value === OPT_START) {
+                    const c = line.geometry.coordinates[0];
+                    return [c[1], c[0]];
+                }
+                if (value === OPT_END) {
+                    const c = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+                    return [c[1], c[0]];
+                }
+                const p = filtered[Number(value)];
+                return [p.lat, p.lon];
+            }
+
+            // Inserta INICIO y FIN en los selects, más los postes extraídos
+            function refreshDesignSelectors() {
+                if (!line) { selStart.innerHTML = ""; selEnd.innerHTML = ""; return; }
+
+                const totalLenM = Math.round(turf.length(line, { units: "kilometers" }) * 1000);
+
+                const optsPosts = (filtered || []).map((p, i) => {
+                    const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
+                    return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
+                }).join("");
+
+                const optStart = `<option value="${OPT_START}">INICIO · 0 m</option>`;
+                const optEnd = `<option value="${OPT_END}">FIN · ${totalLenM} m</option>`;
+
+                selStart.innerHTML = optStart + optsPosts + optEnd;
+                selEnd.innerHTML = optStart + optsPosts + optEnd;
+
+                // Por defecto: INICIO → FIN
+                selStart.value = OPT_START;
+                selEnd.value = OPT_END;
+                selectedStartVal = selStart.value;
+                selectedEndVal = selEnd.value;
+
+                // Mostrar inmediatamente los puntos elegidos en el mapa (sin esperar "Previsualizar")
+                drawSelectedEndpoints();
+                ensureDesignLayer();
+                redrawDesignLayer();
+            }
+
+            // Dibuja INICIO/FIN (o poste) seleccionados incluso sin previsualizar
+            function drawSelectedEndpoints() {
+                if (!map || !designLayer || !line) return;
+                designLayer.clearLayers();
+
+                if (selectedStartVal) {
+                    const [latS, lonS] = getLatLonFromSelector(selectedStartVal);
+                    L.circleMarker([latS, lonS], { radius: 6, color: "#f59e0b", fillColor: "#f59e0b", fillOpacity: 1 })
+                        .bindPopup("<b>Origen seleccionado</b>")
+                        .addTo(designLayer);
+                }
+                if (selectedEndVal) {
+                    const [latE, lonE] = getLatLonFromSelector(selectedEndVal);
+                    L.circleMarker([latE, lonE], { radius: 6, color: "#7c3aed", fillColor: "#7c3aed", fillOpacity: 1 })
+                        .bindPopup("<b>Fin seleccionado</b>")
+                        .addTo(designLayer);
+                }
+
+                // Luego dibuja la previa (si existe)
+                designGenerated.forEach(p => {
+                    L.circleMarker([p.lat, p.lon], { radius: 5, color: "#e11d48", fillColor: "#e11d48", fillOpacity: 1 })
+                        .bindPopup(`<b>${p.name}</b>`)
+                        .addTo(designLayer);
+                });
+            }
+
+            // Garantiza capa y redibuja
+            function ensureDesignLayer() { if (map && !designLayer) designLayer = L.layerGroup().addTo(map); }
+            function redrawDesignLayer() { drawSelectedEndpoints(); }
+
+            // Listeners de cambio para pintar INICIO/FIN al vuelo
+            selStart.addEventListener("change", () => {
+                selectedStartVal = selStart.value;
+                ensureDesignLayer();
+                redrawDesignLayer();
+            });
+            selEnd.addEventListener("change", () => {
+                selectedEndVal = selEnd.value;
+                ensureDesignLayer();
+                redrawDesignLayer();
+            });
+
+            // Generar puntos entre dos proyecciones/locaciones sobre la línea
+            function generateDesignBetweenProjs(startInfo, endInfo, spacingM) {
+                let s = startInfo, e = endInfo;
+                if (e.loc < s.loc) [s, e] = [e, s];
+
+                const segment = turf.lineSlice(s.proj, e.proj, line);
+                const segLenM = turf.length(segment, { units: "kilometers" }) * 1000;
+
+                const out = [];
+                for (let d = spacingM; d < segLenM; d += spacingM) {
+                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    out.push({ name, lat, lon, location: s.loc + d, distance: 0, designed: true });
+                }
+                return out;
+            }
+
+
             // Mostrar tarjeta cuando se cumpla: Extraer + Ver en mapa
             function maybeShowDesignCard() {
                 if (hasExtracted && hasShownMap) {
@@ -671,29 +807,23 @@
 
             // Botón: Previsualizar
             btnPreview.addEventListener("click", () => {
-                const startIdx = parseInt(selStart.value, 10);
-                const endIdx = parseInt(selEnd.value, 10);
+                const startVal = selStart.value;   // puede ser "LSTART", índice o "LEND"
+                const endVal = selEnd.value;
                 const spacing = Math.max(5, Number(inputSpacing.value) || 60);
 
-                if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) {
-                    alert("Selecciona origen y fin válidos."); return;
-                }
-                if (startIdx === endIdx) {
-                    alert("Origen y fin no pueden ser el mismo poste."); return;
-                }
-                if (!line) {
-                    alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return;
-                }
+                if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
+                if (startVal === endVal) { alert("Origen y fin no pueden ser el mismo."); return; }
 
-                // Generar previa (no modifica 'filtered')
-                designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
+                const sInfo = getProjAndLocFromSelector(startVal);
+                const eInfo = getProjAndLocFromSelector(endVal);
+
+                designGenerated = generateDesignBetweenProjs(sInfo, eInfo, spacing);
                 elDesignCount.textContent = String(designGenerated.length);
                 btnInsert.disabled = designGenerated.length === 0;
 
                 ensureDesignLayer();
                 redrawDesignLayer();
 
-                // Asegurar visibilidad del mapa con la previa
                 if (map && (designGenerated.length || filtered.length)) {
                     const group = L.featureGroup([]);
                     if (layerLine) group.addLayer(layerLine);
@@ -702,6 +832,7 @@
                     try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
                 }
             });
+
 
             // Botón: Insertar al resultado (modifica 'filtered', TXT/KMZ heredarán esto)
             btnInsert.addEventListener("click", () => {
