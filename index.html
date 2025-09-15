@@ -564,18 +564,31 @@
 
             // Construye opciones de selects con los postes extraídos (ordenados por 'location')
             function refreshDesignSelectors() {
-                if (!filtered || !filtered.length) { selStart.innerHTML = ""; selEnd.innerHTML = ""; return; }
-                const opts = filtered.map((p, i) => {
+                if (!line) { selStart.innerHTML = ""; selEnd.innerHTML = ""; return; }
+
+                const [lonS, latS] = line.geometry.coordinates[0];
+                const [lonE, latE] = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+
+                // Opciones de INICIO y FIN
+                const head = `
+        <option value="S">INICIO · ${latS.toFixed(6)}, ${lonS.toFixed(6)}</option>
+        <option value="E">FIN · ${latE.toFixed(6)}, ${lonE.toFixed(6)}</option>
+    `;
+
+                // Opciones de postes filtrados
+                const body = (filtered || []).map((p, i) => {
                     const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
-                    const label = `${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m`;
-                    return `<option value="${i}">${label}</option>`;
+                    return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
                 }).join("");
-                selStart.innerHTML = opts;
-                selEnd.innerHTML = opts;
-                // Por defecto: origen=indice menor, fin=indice mayor
-                selStart.selectedIndex = 0;
-                selEnd.selectedIndex = Math.max(filtered.length - 1, 0);
+
+                selStart.innerHTML = head + body;
+                selEnd.innerHTML = head + body;
+
+                // Por defecto: INICIO y FIN
+                selStart.value = "S";
+                selEnd.value = "E";
             }
+
 
             // Capa de previsualización (rojo)
             function ensureDesignLayer() {
