@@ -578,30 +578,27 @@
                     return;
                 }
 
-                const start = line.geometry.coordinates[0]; // [lon,lat]
+                const start = line.geometry.coordinates[0];                           // [lon,lat]
                 const end = line.geometry.coordinates[line.geometry.coordinates.length - 1];
-                const lastIdx = filtered.length - 1;
 
-                // Valores centinela (no colisionan con los índices 0..lastIdx)
-                const SENT_START = "-1";               // INICIO de la línea
-                const SENT_END = String(filtered.length); // FIN de la línea (uno más que lastIdx)
-
-                const optInicio = `<option value="${SENT_START}">INICIO · ${start[1].toFixed(6)}, ${start[0].toFixed(6)}</option>`;
-                const optFin = `<option value="${SENT_END}">FIN · ${end[1].toFixed(6)}, ${end[0].toFixed(6)}</option>`;
+                // ⬇️ INICIO y FIN muestran coordenadas reales de la línea y usan valores sentinela
+                const optInicio = `<option value="-1">INICIO · ${start[1].toFixed(6)}, ${start[0].toFixed(6)}</option>`;
+                const optFin = `<option value="${filtered.length}">FIN · ${end[1].toFixed(6)}, ${end[0].toFixed(6)}</option>`;
 
                 const cuerpo = filtered.map((p, i) => {
                     const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
                     return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
                 }).join("");
 
-                // INICIO (línea) + postes  /  postes + FIN (línea)
+                // INICIO (línea) + postes   /   postes + FIN (línea)
                 selStart.innerHTML = optInicio + cuerpo;
                 selEnd.innerHTML = cuerpo + optFin;
 
-                // Por defecto (elige lo que prefieras):
-                selStart.value = SENT_START;           // Mostrar INICIO real de la línea
-                selEnd.value = String(lastIdx);      // o usa 'SENT_END' si quieres mostrar FIN por defecto
+                // Por defecto: de INICIO (línea) a FIN (línea)
+                selStart.value = "-1";
+                selEnd.value = String(filtered.length);
             }
+
 
 
 
@@ -639,49 +636,49 @@
                 return turf.length(slice, { units: "kilometers" }) * 1000;
             }
             // Genera postes entre el extremo real de la línea (inicio o fin) y un poste.
-            function generateDesignFromLineToPost(useStart, postIdx, spacingM) {
-                if (!line || !filtered?.length) return [];
+            btnPreview.addEventListener("click", () => {
+                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
+                if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
 
-                const lineStart = turf.point(line.geometry.coordinates[0]);
-                const lineEnd = turf.point(line.geometry.coordinates[line.geometry.coordinates.length - 1]);
+                const startVal = selStart.value;                   // "-1" = INICIO (línea), "0..N-1" = poste
+                const endVal = selEnd.value;                     // "0..N-1" = poste, "N" = FIN (línea)
+                const lastIdx = filtered.length - 1;
 
-                const post = filtered[postIdx];
-                const postProj = turf.nearestPointOnLine(line, turf.point([post.lon, post.lat]), { units: "meters" });
+                const isInicioLine = (startVal === "-1");
+                const isFinLine = (endVal === String(filtered.length));
 
-                let segment, startLoc;
-                if (useStart) {
-                    segment = turf.lineSlice(lineStart, postProj, line);
-                    startLoc = 0;
+                const startIdx = isInicioLine ? 0 : parseInt(startVal, 10);
+                const endIdx = isFinLine ? lastIdx : parseInt(endVal, 10);
+
+                if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) {
+                    alert("Selecciona origen y fin válidos."); return;
+                }
+                if (!isInicioLine && !isFinLine && startIdx === endIdx) {
+                    alert("Origen y fin no pueden ser el mismo poste."); return;
+                }
+
+                // Casos de borde: extremos de la línea con el primer/último poste
+                if (isInicioLine && endIdx === 0) {
+                    designGenerated = generateDesignFromLineToPost(true, 0, spacing);        // INICIO → primer poste
+                } else if (isFinLine && startIdx === lastIdx) {
+                    designGenerated = generateDesignFromLineToPost(false, lastIdx, spacing); // último poste → FIN
                 } else {
-                    segment = turf.lineSlice(postProj, lineEnd, line);
-                    startLoc = locationAlongLineFromStart(postProj);
+                    designGenerated = generateDesignBetween(startIdx, endIdx, spacing);      // resto de casos
                 }
 
-                const segLenM = turf.length(segment, { units: "kilometers" }) * 1000;
-
-                const out = [];
-                for (let d = spacingM; d < segLenM; d += spacingM) {
-                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
-                    const [lon, lat] = pt.geometry.coordinates;
-                    designCounter += 1;
-                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
-                    const locAbs = startLoc + d;
-                    out.push({ name, lat, lon, location: locAbs, distance: 0, designed: true });
+                elDesignCount.textContent = String(designGenerated.length);
+                btnInsert.disabled = designGenerated.length === 0;
+                ensureDesignLayer();
+                redrawDesignLayer();
+                if (map && (designGenerated.length || filtered.length)) {
+                    const group = L.featureGroup([]);
+                    if (layerLine) group.addLayer(layerLine);
+                    if (layerPostesFiltered) group.addLayer(layerPostesFiltered);
+                    if (designLayer) group.addLayer(designLayer);
+                    try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
                 }
+            });
 
-                // Fallback: si el tramo es más corto que spacingM, dibuja 1 en el centro
-                if (out.length === 0 && segLenM > 0) {
-                    const d = segLenM / 2;
-                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
-                    const [lon, lat] = pt.geometry.coordinates;
-                    designCounter += 1;
-                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
-                    const locAbs = startLoc + d;
-                    out.push({ name, lat, lon, location: locAbs, distance: 0, designed: true });
-                }
-
-                return out;
-            }
 
             // Generar postes cada 'spacingM' entre los puntos elegidos, siguiendo la línea
             function generateDesignBetween(startIdx, endIdx, spacingM) {
