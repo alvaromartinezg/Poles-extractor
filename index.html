@@ -638,6 +638,50 @@
                 const slice = turf.lineSlice(startPt, pt, line);
                 return turf.length(slice, { units: "kilometers" }) * 1000;
             }
+            // Genera postes entre el extremo real de la línea (inicio o fin) y un poste.
+            function generateDesignFromLineToPost(useStart, postIdx, spacingM) {
+                if (!line || !filtered?.length) return [];
+
+                const lineStart = turf.point(line.geometry.coordinates[0]);
+                const lineEnd = turf.point(line.geometry.coordinates[line.geometry.coordinates.length - 1]);
+
+                const post = filtered[postIdx];
+                const postProj = turf.nearestPointOnLine(line, turf.point([post.lon, post.lat]), { units: "meters" });
+
+                let segment, startLoc;
+                if (useStart) {
+                    segment = turf.lineSlice(lineStart, postProj, line);
+                    startLoc = 0;
+                } else {
+                    segment = turf.lineSlice(postProj, lineEnd, line);
+                    startLoc = locationAlongLineFromStart(postProj);
+                }
+
+                const segLenM = turf.length(segment, { units: "kilometers" }) * 1000;
+
+                const out = [];
+                for (let d = spacingM; d < segLenM; d += spacingM) {
+                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    const locAbs = startLoc + d;
+                    out.push({ name, lat, lon, location: locAbs, distance: 0, designed: true });
+                }
+
+                // Fallback: si el tramo es más corto que spacingM, dibuja 1 en el centro
+                if (out.length === 0 && segLenM > 0) {
+                    const d = segLenM / 2;
+                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    const locAbs = startLoc + d;
+                    out.push({ name, lat, lon, location: locAbs, distance: 0, designed: true });
+                }
+
+                return out;
+            }
 
             // Generar postes cada 'spacingM' entre los puntos elegidos, siguiendo la línea
             function generateDesignBetween(startIdx, endIdx, spacingM) {
@@ -700,47 +744,29 @@
 
             // Botón: Previsualizar
             btnPreview.addEventListener("click", () => {
-                const startVal = selStart.value;                 // puede ser "-1" (INICIO), "0"..lastIdx
-                const endVal = selEnd.value;                   // puede ser "0"..lastIdx o "filtered.length" (FIN)
+                const startVal = selStart.value;                 // "-1" = INICIO, "0..N-1" = poste
+                const endVal = selEnd.value;                   // "0..N-1" = poste, "N" = FIN
                 const spacing = Math.max(5, Number(inputSpacing.value) || 60);
 
                 if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
-
-                // ✅ Si el usuario eligió exactamente el mismo value, sí es el mismo punto
                 if (startVal === endVal) { alert("Origen y fin no pueden ser el mismo poste."); return; }
 
                 const lastIdx = filtered.length - 1;
-
-                // Centinelas
                 const isInicioLine = (startVal === "-1");
                 const isFinLine = (endVal === String(filtered.length));
 
-                // Mapear a índices reales para la generación
                 const startIdx = isInicioLine ? 0 : parseInt(startVal, 10);
                 const endIdx = isFinLine ? lastIdx : parseInt(endVal, 10);
 
-                // Backups y reemplazos temporales (para usar coord. reales de la línea)
-                let backupFirst = null;
-                let backupLast = null;
-
-                if (isInicioLine && filtered[0]) {
-                    backupFirst = { ...filtered[0] };
-                    const [lon0, lat0] = line.geometry.coordinates[0];
-                    filtered[0] = { ...filtered[0], name: "INICIO", lat: lat0, lon: lon0 };
+                // 🎯 Casos borde que antes daban segmento 0 m:
+                if (isInicioLine && endIdx === 0) {
+                    designGenerated = generateDesignFromLineToPost(true, 0, spacing);      // INICIO → primer poste
+                } else if (isFinLine && startIdx === lastIdx) {
+                    designGenerated = generateDesignFromLineToPost(false, lastIdx, spacing); // último poste → FIN
+                } else {
+                    // Resto de casos, usa tu generador normal
+                    designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
                 }
-
-                if (isFinLine && filtered.length) {
-                    backupLast = { ...filtered[lastIdx] };
-                    const [lone, late] = line.geometry.coordinates[line.geometry.coordinates.length - 1];
-                    filtered[lastIdx] = { ...filtered[lastIdx], name: "FIN", lat: late, lon: lone };
-                }
-
-                // Generar previa
-                designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
-
-                // Restaurar
-                if (backupFirst) filtered[0] = backupFirst;
-                if (backupLast) filtered[lastIdx] = backupLast;
 
                 elDesignCount.textContent = String(designGenerated.length);
                 btnInsert.disabled = designGenerated.length === 0;
@@ -756,7 +782,6 @@
                     try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
                 }
             });
-
 
 
             // Botón: Insertar al resultado (modifica 'filtered', TXT/KMZ heredarán esto)
