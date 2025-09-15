@@ -229,6 +229,8 @@
             const ZIP_NAME = "postes.csv.zip";
             let postes = [];          // [{name, lat, lon}]
             let filtered = [];        // [{name, lat, lon, location, distance}]
+            const INICIO_VALUE = -1;   // sentinel para inicio real de la LÍNEA
+            let FIN_VALUE = null; // se setea dinámicamente = filtered.length
             let line = null;          // Feature<LineString>
             let map, layerLine, layerPostesFiltered;
             let postsLoaded = false;
@@ -578,26 +580,28 @@
                     return;
                 }
 
-                const start = line.geometry.coordinates[0];                           // [lon,lat]
-                const end = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+                const startCoord = line.geometry.coordinates[0];                                      // [lon,lat]
+                const endCoord = line.geometry.coordinates[line.geometry.coordinates.length - 1];   // [lon,lat]
 
-                // ⬇️ INICIO y FIN muestran coordenadas reales de la línea y usan valores sentinela
-                const optInicio = `<option value="-1">INICIO · ${start[1].toFixed(6)}, ${start[0].toFixed(6)}</option>`;
-                const optFin = `<option value="${filtered.length}">FIN · ${end[1].toFixed(6)}, ${end[0].toFixed(6)}</option>`;
+                FIN_VALUE = filtered.length;  // reservamos el valor N (después del último índice)
+
+                const optInicio = `<option value="${INICIO_VALUE}">INICIO · ${startCoord[1].toFixed(6)}, ${startCoord[0].toFixed(6)}</option>`;
+                const optFin = `<option value="${FIN_VALUE}">FIN · ${endCoord[1].toFixed(6)}, ${endCoord[0].toFixed(6)}</option>`;
 
                 const cuerpo = filtered.map((p, i) => {
                     const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
                     return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
                 }).join("");
 
-                // INICIO (línea) + postes   /   postes + FIN (línea)
+                // INICIO (línea) + postes … / … postes + FIN (línea)
                 selStart.innerHTML = optInicio + cuerpo;
                 selEnd.innerHTML = cuerpo + optFin;
 
-                // Por defecto: de INICIO (línea) a FIN (línea)
-                selStart.value = "-1";
-                selEnd.value = String(filtered.length);
+                // Por defecto: extremos reales de la línea
+                selStart.value = String(INICIO_VALUE);
+                selEnd.value = String(FIN_VALUE);
             }
+
 
 
 
@@ -637,39 +641,42 @@
             }
             // Genera postes entre el extremo real de la línea (inicio o fin) y un poste.
             btnPreview.addEventListener("click", () => {
-                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
                 if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
+                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
 
-                const startVal = selStart.value;                   // "-1" = INICIO (línea), "0..N-1" = poste
-                const endVal = selEnd.value;                     // "0..N-1" = poste, "N" = FIN (línea)
-                const lastIdx = filtered.length - 1;
+                const startSel = parseInt(selStart.value, 10);
+                const endSel = parseInt(selEnd.value, 10);
 
-                const isInicioLine = (startVal === "-1");
-                const isFinLine = (endVal === String(filtered.length));
-
-                const startIdx = isInicioLine ? 0 : parseInt(startVal, 10);
-                const endIdx = isFinLine ? lastIdx : parseInt(endVal, 10);
-
-                if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) {
+                // Validaciones simples
+                if (Number.isNaN(startSel) || Number.isNaN(endSel)) {
                     alert("Selecciona origen y fin válidos."); return;
                 }
-                if (!isInicioLine && !isFinLine && startIdx === endIdx) {
-                    alert("Origen y fin no pueden ser el mismo poste."); return;
+                // Misma selección exacta (dos INICIO, dos FIN, o el mismo poste)
+                if (startSel === endSel) {
+                    alert("Origen y fin no pueden ser el mismo."); return;
                 }
 
-                // Casos de borde: extremos de la línea con el primer/último poste
-                if (isInicioLine && endIdx === 0) {
-                    designGenerated = generateDesignFromLineToPost(true, 0, spacing);        // INICIO → primer poste
-                } else if (isFinLine && startIdx === lastIdx) {
-                    designGenerated = generateDesignFromLineToPost(false, lastIdx, spacing); // último poste → FIN
+                // CASOS:
+                if (startSel === INICIO_VALUE && endSel === FIN_VALUE) {
+                    // INICIO (línea) → FIN (línea): línea completa
+                    designGenerated = generateDesignAllLine(spacing);
+                } else if (startSel === INICIO_VALUE) {
+                    // INICIO (línea) → Poste
+                    designGenerated = generateDesignFromLineToPost(true, endSel, spacing);
+                } else if (endSel === FIN_VALUE) {
+                    // Poste → FIN (línea)
+                    designGenerated = generateDesignFromLineToPost(false, startSel, spacing);
                 } else {
-                    designGenerated = generateDesignBetween(startIdx, endIdx, spacing);      // resto de casos
+                    // Poste → Poste
+                    designGenerated = generateDesignBetween(startSel, endSel, spacing);
                 }
 
                 elDesignCount.textContent = String(designGenerated.length);
                 btnInsert.disabled = designGenerated.length === 0;
+
                 ensureDesignLayer();
                 redrawDesignLayer();
+
                 if (map && (designGenerated.length || filtered.length)) {
                     const group = L.featureGroup([]);
                     if (layerLine) group.addLayer(layerLine);
@@ -678,6 +685,7 @@
                     try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
                 }
             });
+
 
 
             // Generar postes cada 'spacingM' entre los puntos elegidos, siguiendo la línea
@@ -717,6 +725,32 @@
                 }
                 return out;
             }
+            function generateDesignAllLine(spacingM) {
+                if (!line) return [];
+                const totalLenM = turf.length(line, { units: "kilometers" }) * 1000;
+
+                const out = [];
+                for (let d = spacingM; d < totalLenM; d += spacingM) {
+                    const pt = turf.along(line, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    out.push({ name, lat, lon, location: d, distance: 0, designed: true });
+                }
+
+                // Fallback: si el tramo es muy corto, dibuja 1 al centro
+                if (out.length === 0 && totalLenM > 0) {
+                    const d = totalLenM / 2;
+                    const pt = turf.along(line, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    out.push({ name, lat, lon, location: d, distance: 0, designed: true });
+                }
+
+                return out;
+            }
+
 
             // Redibuja el mapa con 'filtered' completo, coloreando los diseñados distinto
             function redrawAllPostsColoring() {
