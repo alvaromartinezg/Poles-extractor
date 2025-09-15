@@ -406,6 +406,201 @@
   let designGenerated = [];                    // Últimos puntos generados (previa)
   let designCounter = 0;                       // Secuencia P_Design_XX acumulada
 
+    // ====== SOPORTE PARA SELECCIONAR INICIO/FIN EN LOS SELECTS ======
+  const OPT_START = "EP:START";
+  const OPT_END   = "EP:END";
+
+  // Longitud total de la línea (m)
+  function totalLineLenM(){
+    if(!line) return 0;
+    return turf.length(line, {units:"kilometers"}) * 1000;
+  }
+
+  // Devuelve objeto {name, lat, lon, location} desde un valor del <select>
+  function resolveSelection(val){
+    if(!line) return null;
+    if(val === OPT_START){
+      const [lon, lat] = line.geometry.coordinates[0];
+      return { name:"INICIO", lat, lon, location: 0 };
+    }
+    if(val === OPT_END){
+      const coords = line.geometry.coordinates;
+      const [lon, lat] = coords[coords.length-1];
+      return { name:"FIN", lat, lon, location: totalLineLenM() };
+    }
+    // Postes extraídos (prefijo "P:")
+    if(val && val.startsWith("P:")){
+      const idx = parseInt(val.slice(2), 10);
+      if(Number.isInteger(idx) && filtered[idx]){
+        const p = filtered[idx];
+        return { name:p.name, lat:p.lat, lon:p.lon, location:(p.location ?? 0) };
+      }
+    }
+    return null;
+  }
+
+  // Construye opciones de selects: añade INICIO y FIN además de los postes
+  function refreshDesignSelectors(){
+    if(!line){ selStart.innerHTML=""; selEnd.innerHTML=""; return; }
+
+    const startCoord = line.geometry.coordinates[0];
+    const endCoord   = line.geometry.coordinates[line.geometry.coordinates.length-1];
+    const totalM     = Math.round(totalLineLenM());
+
+    const fmt = n => (typeof n==="number" ? Math.round(n) : "-");
+
+    // Opción INICIO
+    const optStart =
+      `<option value="${OPT_START}">INICIO · ${startCoord[1].toFixed(5)}, ${startCoord[0].toFixed(5)} · 0 m</option>`;
+
+    // Postes extraídos (si hay)
+    const optsPosts = (filtered||[]).map((p, i)=>{
+      const loc = fmt(p.location);
+      const label = `${i.toString().padStart(3,"0")} · ${p.name} · ${loc} m`;
+      return `<option value="P:${i}">${label}</option>`;
+    }).join("");
+
+    // Opción FIN
+    const optEnd =
+      `<option value="${OPT_END}">FIN · ${endCoord[1].toFixed(5)}, ${endCoord[0].toFixed(5)} · ${totalM} m</option>`;
+
+    const html = optStart + optsPosts + optEnd;
+    selStart.innerHTML = html;
+    selEnd.innerHTML   = html;
+
+    // Por defecto: Origen = INICIO, Fin = FIN
+    selStart.selectedIndex = 0;
+    selEnd.selectedIndex   = selEnd.options.length - 1;
+  }
+
+  // === ENDPOINTS VISUALES (ORIGEN/FIN) — muestran los puntos elegidos en el mapa
+  let designEndpointsLayer = null;
+  function ensureDesignEndpointsLayer(){
+    if(map && !designEndpointsLayer){
+      designEndpointsLayer = L.layerGroup().addTo(map);
+    }
+  }
+  function drawDesignEndpoints(){
+    if(!map) return;
+    const pS = resolveSelection(selStart.value);
+    const pE = resolveSelection(selEnd.value);
+    if(!pS || !pE) return;
+
+    ensureDesignEndpointsLayer();
+    designEndpointsLayer.clearLayers();
+
+    const styleStart = { radius:7, color:"#1d4ed8", fillColor:"#1d4ed8", fillOpacity:1, weight:2 };
+    const styleEnd   = { radius:7, color:"#9333ea", fillColor:"#9333ea", fillOpacity:1, weight:2 };
+
+    L.circleMarker([pS.lat, pS.lon], styleStart).bindPopup(`<b>ORIGEN</b><br>${pS.name}`).addTo(designEndpointsLayer);
+    L.circleMarker([pE.lat, pE.lon], styleEnd  ).bindPopup(`<b>FIN</b><br>${pE.name}`).addTo(designEndpointsLayer);
+  }
+  selStart.addEventListener("change", drawDesignEndpoints);
+  selEnd  .addEventListener("change", drawDesignEndpoints);
+
+  // Mostrar todo (tarjeta + endpoints + previa si existiera)
+  function showDesignUIWithEndpoints(){
+    ensureDesignLayer();
+    ensureDesignEndpointsLayer();
+    redrawDesignLayer();
+    drawDesignEndpoints();
+    if(map){
+      const layers = [];
+      if(layerLine) layers.push(layerLine);
+      if(layerPostesFiltered) layers.push(layerPostesFiltered);
+      if(designLayer) layers.push(designLayer);
+      if(designEndpointsLayer) layers.push(designEndpointsLayer);
+      try{
+        const group = L.featureGroup(layers);
+        map.fitBounds(group.getBounds(), {padding:[20,20]});
+      }catch(_){}
+    }
+  }
+
+  // === AJUSTE: mostrar tarjeta solo tras Extraer + Ver mapa (como ya tenías)
+  function maybeShowDesignCard(){
+    if(hasExtracted && hasShownMap){
+      designCard.style.display = "block";
+      refreshDesignSelectors();
+      showDesignUIWithEndpoints();
+    }
+  }
+
+  // === UTILIDADES DE LÍNEA (reuso)
+  function projectPointOnLine(ll){ // ll = [lon, lat]
+    return turf.nearestPointOnLine(line, turf.point(ll), {units:"meters"});
+  }
+  function locationAlongLineFromStart(pt){ // metros desde inicio
+    const startPt = turf.point(line.geometry.coordinates[0]);
+    const slice   = turf.lineSlice(startPt, pt, line);
+    return turf.length(slice, {units:"kilometers"}) * 1000;
+  }
+
+  // === GENERACIÓN ENTRE SELECCIONES (acepta INICIO/FIN o postes)
+  function generateDesignBetweenSel(selValA, selValB, spacingM){
+    if(!line) return [];
+    const A = resolveSelection(selValA);
+    const B = resolveSelection(selValB);
+    if(!A || !B) return [];
+
+    // Proyectar ambos sobre la línea (para obtener orden real)
+    const projA = projectPointOnLine([A.lon, A.lat]);
+    const projB = projectPointOnLine([B.lon, B.lat]);
+    let locA = locationAlongLineFromStart(projA);
+    let locB = locationAlongLineFromStart(projB);
+
+    let startProj = projA, endProj = projB, startLoc = locA, endLoc = locB;
+    if(locB < locA){
+      startProj = projB; endProj = projA; startLoc = locB; endLoc = locA;
+    }
+
+    const segment = turf.lineSlice(startProj, endProj, line);
+    const segLenM = turf.length(segment, {units:"kilometers"}) * 1000;
+
+    const out = [];
+    for(let d = spacingM; d < segLenM; d += spacingM){
+      const pt = turf.along(segment, d/1000, {units:"kilometers"});
+      const [lon, lat] = pt.geometry.coordinates;
+      designCounter += 1;
+      const name = `P_Design_${String(designCounter).padStart(2,"0")}`;
+      const locAbs = startLoc + d;
+      out.push({ name, lat, lon, location: locAbs, distance: 0, designed: true });
+    }
+    return out;
+  }
+
+  // === LISTENERS: usar las nuevas funciones basadas en selección INICIO/FIN/poste
+  document.getElementById("btnExtract").addEventListener("click", ()=>{
+    hasExtracted = true;
+    if (filtered && filtered.length) refreshDesignSelectors();
+    clearDesignPreview();
+    maybeShowDesignCard();
+    drawDesignEndpoints();
+  });
+
+  document.getElementById("btnShowMap").addEventListener("click", ()=>{
+    hasShownMap = true;
+    ensureDesignLayer();
+    redrawDesignLayer();
+    maybeShowDesignCard();
+    drawDesignEndpoints();
+  });
+
+  // Botón: Previsualizar (usa generateDesignBetweenSel)
+  btnPreview.addEventListener("click", ()=>{
+    const spacing = Math.max(5, Number(inputSpacing.value) || 60);
+    if(!line){
+      alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return;
+    }
+    designGenerated = generateDesignBetweenSel(selStart.value, selEnd.value, spacing);
+    elDesignCount.textContent = String(designGenerated.length);
+    btnInsert.disabled = designGenerated.length === 0;
+
+    ensureDesignLayer();
+    redrawDesignLayer();
+    drawDesignEndpoints();
+  });
+
   // Referencias UI nuevas
   const designCard      = document.getElementById("designCard");
   const selStart        = document.getElementById("designStart");
@@ -416,6 +611,7 @@
   const btnClear        = document.getElementById("btnClearDesign");
   const elDesignCount   = document.getElementById("designCount");
 
+  
   // Mostrar tarjeta cuando se cumpla: Extraer + Ver en mapa
   function maybeShowDesignCard(){
     if(hasExtracted && hasShownMap){
