@@ -254,32 +254,32 @@
             }
 
             // PapaParse en worker (no bloquea la UI)
-          function parseCSVWithPapaAsync(text) {
-    return new Promise((resolve) => {
-        const out = [];
-        Papa.parse(text, {
-            header: true,
-            skipEmptyLines: true,
-            worker: true,
-            step: (row) => {
-                const r = row.data;
+            function parseCSVWithPapaAsync(text) {
+                return new Promise((resolve) => {
+                    const out = [];
+                    Papa.parse(text, {
+                        header: true,
+                        skipEmptyLines: true,
+                        worker: true,
+                        step: (row) => {
+                            const r = row.data;
 
-                // Lee lat/lon con los alias más comunes
-                const lat = parseFloat(r.Latitud ?? r.lat ?? r.LAT ?? r.latitude ?? r.Latitude);
-                const lon = parseFloat(r.Longitud ?? r.lon ?? r.LON ?? r.longitude ?? r.Longitude);
+                            // Lee lat/lon con los alias más comunes
+                            const lat = parseFloat(r.Latitud ?? r.lat ?? r.LAT ?? r.latitude ?? r.Latitude);
+                            const lon = parseFloat(r.Longitud ?? r.lon ?? r.LON ?? r.longitude ?? r.Longitude);
 
-                // ✅ Usar directamente la columna "name" (primera del CSV)
-                let name = (r.name ?? r.Nombre ?? r.NOMBRE ?? r.NAME ?? "").toString().trim();
+                            // ✅ Usar directamente la columna "name" (primera del CSV)
+                            let name = (r.name ?? r.Nombre ?? r.NOMBRE ?? r.NAME ?? "").toString().trim();
 
-                if (!isNaN(lat) && !isNaN(lon)) {
-                    if (!name) name = "Poste"; // Fallback simple
-                    out.push({ name, lat, lon });
-                }
-            },
-            complete: () => resolve(out)
-        });
-    });
-}
+                            if (!isNaN(lat) && !isNaN(lon)) {
+                                if (!name) name = "Poste"; // Fallback simple
+                                out.push({ name, lat, lon });
+                            }
+                        },
+                        complete: () => resolve(out)
+                    });
+                });
+            }
 
             async function loadCSVFromZip(zipName = ZIP_NAME) {
                 const blob = await fetchBlob(zipName);
@@ -572,34 +572,37 @@
 
             // Construye opciones de selects con los postes extraídos (ordenados por 'location')
             function refreshDesignSelectors() {
-    if (!filtered || !filtered.length || !line) {
-        selStart.innerHTML = "";
-        selEnd.innerHTML = "";
-        return;
-    }
+                if (!filtered || !filtered.length || !line) {
+                    selStart.innerHTML = "";
+                    selEnd.innerHTML = "";
+                    return;
+                }
 
-    // 🔹 Coordenada real de inicio/fin de la línea
-    const start = line.geometry.coordinates[0]; // [lon,lat]
-    const end   = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+                const start = line.geometry.coordinates[0]; // [lon,lat]
+                const end = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+                const lastIdx = filtered.length - 1;
 
-    // 🔹 INICIO muestra la coord. real de la línea, pero mantiene value="0"
-    const optInicio = `<option value="0">INICIO · ${start[1].toFixed(6)}, ${start[0].toFixed(6)}</option>`;
-    const lastIdx = filtered.length - 1;
-    const optFin  = `<option value="${lastIdx}">FIN · ${filtered[lastIdx].name}</option>`;
+                // Valores centinela (no colisionan con los índices 0..lastIdx)
+                const SENT_START = "-1";               // INICIO de la línea
+                const SENT_END = String(filtered.length); // FIN de la línea (uno más que lastIdx)
 
-    const cuerpo = filtered.map((p, i) => {
-        const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
-        return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
-    }).join("");
+                const optInicio = `<option value="${SENT_START}">INICIO · ${start[1].toFixed(6)}, ${start[0].toFixed(6)}</option>`;
+                const optFin = `<option value="${SENT_END}">FIN · ${end[1].toFixed(6)}, ${end[0].toFixed(6)}</option>`;
 
-    // INICIO (línea) + postes  /  postes + FIN (poste final)
-    selStart.innerHTML = optInicio + cuerpo;
-    selEnd.innerHTML   = cuerpo + optFin;
+                const cuerpo = filtered.map((p, i) => {
+                    const loc = typeof p.location === "number" ? Math.round(p.location) : "-";
+                    return `<option value="${i}">${i.toString().padStart(3, "0")} · ${p.name} · ${loc} m</option>`;
+                }).join("");
 
-    // Por defecto, extremos
-    selStart.value = "0";          // muestra INICIO
-    selEnd.value   = String(lastIdx);
-}
+                // INICIO (línea) + postes  /  postes + FIN (línea)
+                selStart.innerHTML = optInicio + cuerpo;
+                selEnd.innerHTML = cuerpo + optFin;
+
+                // Por defecto (elige lo que prefieras):
+                selStart.value = SENT_START;           // Mostrar INICIO real de la línea
+                selEnd.value = String(lastIdx);      // o usa 'SENT_END' si quieres mostrar FIN por defecto
+            }
+
 
 
 
@@ -696,52 +699,64 @@
             }
 
             // Botón: Previsualizar
-           btnPreview.addEventListener("click", () => {
-    const startVal = selStart.value;                 // "0" si eligió INICIO
-    const endVal   = selEnd.value;
-    const spacing  = Math.max(5, Number(inputSpacing.value) || 60);
+            btnPreview.addEventListener("click", () => {
+                const startVal = selStart.value;                 // puede ser "-1" (INICIO), "0"..lastIdx
+                const endVal = selEnd.value;                   // puede ser "0"..lastIdx o "filtered.length" (FIN)
+                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
 
-    if (!Number.isInteger(parseInt(endVal, 10))) { alert("Selecciona fin válido."); return; }
-    if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
+                if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
 
-    const startIdx = parseInt(startVal, 10);
-    const endIdx   = parseInt(endVal, 10);
+                // ✅ Si el usuario eligió exactamente el mismo value, sí es el mismo punto
+                if (startVal === endVal) { alert("Origen y fin no pueden ser el mismo poste."); return; }
 
-    if (startIdx === endIdx) { alert("Origen y fin no pueden ser el mismo."); return; }
+                const lastIdx = filtered.length - 1;
 
-    // 🔹 ¿La opción visible es INICIO? (la que pusimos en refreshDesignSelectors)
-    const isInicioLine =
-        selStart.selectedIndex >= 0 &&
-        selStart.options[selStart.selectedIndex].textContent.trim().startsWith("INICIO");
+                // Centinelas
+                const isInicioLine = (startVal === "-1");
+                const isFinLine = (endVal === String(filtered.length));
 
-    let backupFirst = null;
-    if (isInicioLine && filtered[0]) {
-        // Guardar y reemplazar temporalmente el primer poste por la coord. inicial de la línea
-        backupFirst = { ...filtered[0] };
-        const [lon0, lat0] = line.geometry.coordinates[0];
-        filtered[0] = { ...filtered[0], name: "INICIO", lat: lat0, lon: lon0, location: 0 };
-    }
+                // Mapear a índices reales para la generación
+                const startIdx = isInicioLine ? 0 : parseInt(startVal, 10);
+                const endIdx = isFinLine ? lastIdx : parseInt(endVal, 10);
 
-    // ✅ Reusar tu función existente (por índices)
-    designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
+                // Backups y reemplazos temporales (para usar coord. reales de la línea)
+                let backupFirst = null;
+                let backupLast = null;
 
-    // Restaurar el primer poste si lo cambiamos
-    if (backupFirst) filtered[0] = backupFirst;
+                if (isInicioLine && filtered[0]) {
+                    backupFirst = { ...filtered[0] };
+                    const [lon0, lat0] = line.geometry.coordinates[0];
+                    filtered[0] = { ...filtered[0], name: "INICIO", lat: lat0, lon: lon0 };
+                }
 
-    elDesignCount.textContent = String(designGenerated.length);
-    btnInsert.disabled = designGenerated.length === 0;
+                if (isFinLine && filtered.length) {
+                    backupLast = { ...filtered[lastIdx] };
+                    const [lone, late] = line.geometry.coordinates[line.geometry.coordinates.length - 1];
+                    filtered[lastIdx] = { ...filtered[lastIdx], name: "FIN", lat: late, lon: lone };
+                }
 
-    ensureDesignLayer();
-    redrawDesignLayer();
+                // Generar previa
+                designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
 
-    if (map && (designGenerated.length || filtered.length)) {
-        const group = L.featureGroup([]);
-        if (layerLine) group.addLayer(layerLine);
-        if (layerPostesFiltered) group.addLayer(layerPostesFiltered);
-        if (designLayer) group.addLayer(designLayer);
-        try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
-    }
-});
+                // Restaurar
+                if (backupFirst) filtered[0] = backupFirst;
+                if (backupLast) filtered[lastIdx] = backupLast;
+
+                elDesignCount.textContent = String(designGenerated.length);
+                btnInsert.disabled = designGenerated.length === 0;
+
+                ensureDesignLayer();
+                redrawDesignLayer();
+
+                if (map && (designGenerated.length || filtered.length)) {
+                    const group = L.featureGroup([]);
+                    if (layerLine) group.addLayer(layerLine);
+                    if (layerPostesFiltered) group.addLayer(layerPostesFiltered);
+                    if (designLayer) group.addLayer(designLayer);
+                    try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
+                }
+            });
+
 
 
             // Botón: Insertar al resultado (modifica 'filtered', TXT/KMZ heredarán esto)
