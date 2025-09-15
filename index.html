@@ -640,53 +640,6 @@
                 return turf.length(slice, { units: "kilometers" }) * 1000;
             }
             // Genera postes entre el extremo real de la línea (inicio o fin) y un poste.
-            btnPreview.addEventListener("click", () => {
-                if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
-                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
-
-                const startSel = parseInt(selStart.value, 10);
-                const endSel = parseInt(selEnd.value, 10);
-
-                // Validaciones simples
-                if (Number.isNaN(startSel) || Number.isNaN(endSel)) {
-                    alert("Selecciona origen y fin válidos."); return;
-                }
-                // Misma selección exacta (dos INICIO, dos FIN, o el mismo poste)
-                if (startSel === endSel) {
-                    alert("Origen y fin no pueden ser el mismo."); return;
-                }
-
-                // CASOS:
-                if (startSel === INICIO_VALUE && endSel === FIN_VALUE) {
-                    // INICIO (línea) → FIN (línea): línea completa
-                    designGenerated = generateDesignAllLine(spacing);
-                } else if (startSel === INICIO_VALUE) {
-                    // INICIO (línea) → Poste
-                    designGenerated = generateDesignFromLineToPost(true, endSel, spacing);
-                } else if (endSel === FIN_VALUE) {
-                    // Poste → FIN (línea)
-                    designGenerated = generateDesignFromLineToPost(false, startSel, spacing);
-                } else {
-                    // Poste → Poste
-                    designGenerated = generateDesignBetween(startSel, endSel, spacing);
-                }
-
-                elDesignCount.textContent = String(designGenerated.length);
-                btnInsert.disabled = designGenerated.length === 0;
-
-                ensureDesignLayer();
-                redrawDesignLayer();
-
-                if (map && (designGenerated.length || filtered.length)) {
-                    const group = L.featureGroup([]);
-                    if (layerLine) group.addLayer(layerLine);
-                    if (layerPostesFiltered) group.addLayer(layerPostesFiltered);
-                    if (designLayer) group.addLayer(designLayer);
-                    try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
-                }
-            });
-
-
 
             // Generar postes cada 'spacingM' entre los puntos elegidos, siguiendo la línea
             function generateDesignBetween(startIdx, endIdx, spacingM) {
@@ -725,6 +678,59 @@
                 }
                 return out;
             }
+            // Dibuja postes desde INICIO de la línea -> poste  (useStart=true)
+            // o desde poste -> FIN de la línea                  (useStart=false)
+            function generateDesignFromLineToPost(useStart, postIdx, spacingM) {
+                if (!line || !filtered?.length) return [];
+
+                const lineStart = turf.point(line.geometry.coordinates[0]);
+                const lineEnd = turf.point(line.geometry.coordinates[line.geometry.coordinates.length - 1]);
+
+                const post = filtered[postIdx];
+                const postProj = turf.nearestPointOnLine(
+                    line,
+                    turf.point([post.lon, post.lat]),
+                    { units: "meters" }
+                );
+
+                let segment, startLoc;
+                if (useStart) {
+                    // INICIO (línea) -> poste
+                    segment = turf.lineSlice(lineStart, postProj, line);
+                    startLoc = 0;
+                } else {
+                    // poste -> FIN (línea)
+                    segment = turf.lineSlice(postProj, lineEnd, line);
+                    startLoc = (function () {
+                        const slice = turf.lineSlice(lineStart, postProj, line);
+                        return turf.length(slice, { units: "kilometers" }) * 1000;
+                    })();
+                }
+
+                const segLenM = turf.length(segment, { units: "kilometers" }) * 1000;
+
+                const out = [];
+                for (let d = spacingM; d < segLenM; d += spacingM) {
+                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    out.push({ name, lat, lon, location: startLoc + d, distance: 0, designed: true });
+                }
+
+                // Si el tramo es menor que el espaciamiento, dibuja 1 en el centro
+                if (out.length === 0 && segLenM > 0) {
+                    const d = segLenM / 2;
+                    const pt = turf.along(segment, d / 1000, { units: "kilometers" });
+                    const [lon, lat] = pt.geometry.coordinates;
+                    designCounter += 1;
+                    const name = `P_Design_${String(designCounter).padStart(2, "0")}`;
+                    out.push({ name, lat, lon, location: startLoc + d, distance: 0, designed: true });
+                }
+
+                return out;
+            }
+
             function generateDesignAllLine(spacingM) {
                 if (!line) return [];
                 const totalLenM = turf.length(line, { units: "kilometers" }) * 1000;
@@ -774,29 +780,35 @@
             }
 
             // Botón: Previsualizar
+            // Previsualizar (única versión)
             btnPreview.addEventListener("click", () => {
-                const startVal = selStart.value;                 // "-1" = INICIO, "0..N-1" = poste
-                const endVal = selEnd.value;                   // "0..N-1" = poste, "N" = FIN
-                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
-
                 if (!line) { alert("Primero carga la LÍNEA y ejecuta 'Extraer'."); return; }
-                if (startVal === endVal) { alert("Origen y fin no pueden ser el mismo poste."); return; }
+
+                const spacing = Math.max(5, Number(inputSpacing.value) || 60);
+                const startSel = parseInt(selStart.value, 10);  // -1 = INICIO
+                const endSel = parseInt(selEnd.value, 10);    // N = FIN (N = filtered.length)
+
+                if (Number.isNaN(startSel) || Number.isNaN(endSel)) {
+                    alert("Selecciona origen y fin válidos."); return;
+                }
+                if (startSel === endSel) {
+                    alert("Origen y fin no pueden ser el mismo."); return;
+                }
 
                 const lastIdx = filtered.length - 1;
-                const isInicioLine = (startVal === "-1");
-                const isFinLine = (endVal === String(filtered.length));
 
-                const startIdx = isInicioLine ? 0 : parseInt(startVal, 10);
-                const endIdx = isFinLine ? lastIdx : parseInt(endVal, 10);
-
-                // 🎯 Casos borde que antes daban segmento 0 m:
-                if (isInicioLine && endIdx === 0) {
-                    designGenerated = generateDesignFromLineToPost(true, 0, spacing);      // INICIO → primer poste
-                } else if (isFinLine && startIdx === lastIdx) {
-                    designGenerated = generateDesignFromLineToPost(false, lastIdx, spacing); // último poste → FIN
+                if (startSel === INICIO_VALUE && endSel === FIN_VALUE) {
+                    // INICIO de la línea → FIN de la línea (toda la línea)
+                    designGenerated = generateDesignAllLine(spacing);
+                } else if (startSel === INICIO_VALUE && endSel >= 0 && endSel <= lastIdx) {
+                    // INICIO (línea) → poste
+                    designGenerated = generateDesignFromLineToPost(true, endSel, spacing);
+                } else if (endSel === FIN_VALUE && startSel >= 0 && startSel <= lastIdx) {
+                    // poste → FIN (línea)
+                    designGenerated = generateDesignFromLineToPost(false, startSel, spacing);
                 } else {
-                    // Resto de casos, usa tu generador normal
-                    designGenerated = generateDesignBetween(startIdx, endIdx, spacing);
+                    // poste → poste
+                    designGenerated = generateDesignBetween(startSel, endSel, spacing);
                 }
 
                 elDesignCount.textContent = String(designGenerated.length);
@@ -813,6 +825,7 @@
                     try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch (_) { }
                 }
             });
+
 
 
             // Botón: Insertar al resultado (modifica 'filtered', TXT/KMZ heredarán esto)
