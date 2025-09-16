@@ -38,13 +38,19 @@
             margin: 0;
         }
 
-        header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 20px;
-            justify-content: center;
-        }
+        /* Apila el título debajo del logo */
+header{
+  display: flex;
+  flex-direction: column;   /* 👈 clave */
+  align-items: center;
+  justify-content: center;
+  gap: 6px;                 /* espacio entre logo y título */
+  padding: 20px;
+}
+
+header img{ height: 76px; width: auto; }
+header h1{ margin: 0; }
+
 
         header img {
             height: 48px;
@@ -248,6 +254,13 @@ input[type="number"]:focus{
 }
 .btn.accent:hover{ background: var(--bitel-teal) !important; color:#fff !important; }
 <body>
+.hero .logo{
+  height: 76px;           /* ajusta 60–90px al gusto para igualar la otra página */
+  width: auto;
+  display: block;
+  margin: 0 auto 8px;     /* centrado y un poco de espacio con el título */
+}
+
 
     </style>
 </head>
@@ -255,9 +268,8 @@ input[type="number"]:focus{
 <body>
 	<div class="page">
 <header class="hero">
-    <!-- Si tienes el logo, descomenta la línea siguiente y asegúrate de que el archivo exista -->
-    <!-- <img src="bitel_logo.png" class="logo" alt="Bitel"> -->
-    <h1>BITEL MT pole extractor</h1>
+    <img src="bitel_logo.png" class="logo" alt="bitel">	
+    <h1>Fiber designer over MT</h1>
 </header>
 
 
