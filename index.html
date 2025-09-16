@@ -160,13 +160,106 @@
         .kpi b {
             color: #111827;
         }
+/* ===== BITEL THEME – patch portable ===== */
+:root{
+  --bitel-yellow:#FFF200;
+  --bitel-cyan:#00B8EB;
+  --bitel-teal:#008D97;
+  --bitel-deep:#003E4F;
+  --ui-bg:#F5F7F9;
+  --ui-text:#3A3A3A;
+  --radius-xl:20px;
+  --radius:12px;
+  --shadow-lg:0 18px 60px rgba(0,0,0,.25);
+  --shadow-md:0 8px 24px rgba(0,0,0,.08);
+  --focus:0 0 0 3px rgba(0,184,235,.35);
+}
+
+/* Marco azulado exterior */
+body{
+  background: var(--bitel-deep) !important;
+}
+
+/* Tarjeta/página central */
+.page{
+  background: var(--ui-bg);
+  max-width: 1180px;
+  min-height: 100vh;
+  margin: 18px auto;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 0 20px 32px;
+}
+
+/* Hero amarillo con logo y título */
+.hero{
+  background: var(--bitel-yellow);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: 26px 16px 20px;
+  text-align:center;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.hero .logo{ height:60px; margin:0 0 6px 0; }
+.hero h1{
+  color: var(--bitel-deep) !important;
+  font-weight: 800; margin: 8px 0 0;
+  font-size: clamp(22px, 2.6vw, 28px);
+}
+
+/* Cards y áreas blancas */
+.card{
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-md) !important;
+  border: 1px solid rgba(0,0,0,.06);
+}
+#map{ border-radius: 14px !important; }
+textarea{
+  border-radius: 14px !important;
+  border: 1px solid rgba(0,0,0,.06) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.05);
+}
+
+/* Barra y campos */
+.bar{ padding: 18px; gap: 12px; }
+input[type="number"], input[type="file"]{
+  border:1.5px solid rgba(0,0,0,.14) !important;
+  border-radius: 12px !important;
+}
+input[type="number"]:focus{
+  outline:none; border-color: var(--bitel-cyan) !important;
+  box-shadow: var(--focus) !important;
+}
+.pill{ background:#eef2f5; }
+
+/* Botones: cian primario, azul profundo para el resto */
+.btn{
+  background:#0E4051; color:#E8FBFF;
+  border:none; border-radius: var(--radius) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  transition: background .15s ease, transform .04s ease, box-shadow .2s ease;
+}
+.btn:hover{ background: var(--bitel-teal); }
+.btn:active{ transform: translateY(1px); }
+.btn.accent{
+  background: var(--bitel-cyan) !important;
+  color:#003244 !important;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0,184,235,.25);
+}
+.btn.accent:hover{ background: var(--bitel-teal) !important; color:#fff !important; }
+<body>
+
     </style>
 </head>
 
 <body>
-    <header>
-        <h1>BITEL MT pole extractor</h1>
-    </header>
+	<div class="page">
+<header class="hero">
+    <!-- Si tienes el logo, descomenta la línea siguiente y asegúrate de que el archivo exista -->
+    <!-- <img src="bitel_logo.png" class="logo" alt="Bitel"> -->
+    <h1>BITEL MT pole extractor</h1>
+</header>
+
 
     <div class="bar">
         <input id="fileLine" type="file" accept=".kmz,.kml" hidden />
@@ -223,7 +316,7 @@
         </div>
     </div>
 
-
+</div> <!-- /.page -->
     <script>
         (function () {
             const ZIP_NAME = "postes.csv.zip";
@@ -865,4 +958,4 @@
     </script>
 </body>
 
-</html>
+</html>4
