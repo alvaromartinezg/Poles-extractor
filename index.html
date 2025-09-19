@@ -39,17 +39,25 @@
         }
 
         /* Apila el título debajo del logo */
-header{
-  display: flex;
-  flex-direction: column;   /* 👈 clave */
-  align-items: center;
-  justify-content: center;
-  gap: 6px;                 /* espacio entre logo y título */
-  padding: 20px;
-}
+        header {
+            display: flex;
+            flex-direction: column;
+            /* 👈 clave */
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            /* espacio entre logo y título */
+            padding: 20px;
+        }
 
-header img{ height: 76px; width: auto; }
-header h1{ margin: 0; }
+        header img {
+            height: 76px;
+            width: auto;
+        }
+
+        header h1 {
+            margin: 0;
+        }
 
 
         header img {
@@ -166,169 +174,204 @@ header h1{ margin: 0; }
         .kpi b {
             color: #111827;
         }
-/* ===== BITEL THEME – patch portable ===== */
-:root{
-  --bitel-yellow:#FFF200;
-  --bitel-cyan:#00B8EB;
-  --bitel-teal:#008D97;
-  --bitel-deep:#003E4F;
-  --ui-bg:#F5F7F9;
-  --ui-text:#3A3A3A;
-  --radius-xl:20px;
-  --radius:12px;
-  --shadow-lg:0 18px 60px rgba(0,0,0,.25);
-  --shadow-md:0 8px 24px rgba(0,0,0,.08);
-  --focus:0 0 0 3px rgba(0,184,235,.35);
-}
 
-/* Marco azulado exterior */
-body{
-  background: var(--bitel-deep) !important;
-}
+        /* ===== BITEL THEME – patch portable ===== */
+        :root {
+            --bitel-yellow: #FFF200;
+            --bitel-cyan: #00B8EB;
+            --bitel-teal: #008D97;
+            --bitel-deep: #003E4F;
+            --ui-bg: #F5F7F9;
+            --ui-text: #3A3A3A;
+            --radius-xl: 20px;
+            --radius: 12px;
+            --shadow-lg: 0 18px 60px rgba(0, 0, 0, .25);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, .08);
+            --focus: 0 0 0 3px rgba(0, 184, 235, .35);
+        }
 
-/* Tarjeta/página central */
-.page{
-  background: var(--ui-bg);
-  max-width: 1180px;
-  min-height: 100vh;
-  margin: 18px auto;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  padding: 0 20px 32px;
-}
+        /* Marco azulado exterior */
+        body {
+            background: var(--bitel-deep) !important;
+        }
 
-/* Hero amarillo con logo y título */
-.hero{
-  background: var(--bitel-yellow);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  padding: 26px 16px 20px;
-  text-align:center;
-  border-bottom: 1px solid rgba(0,0,0,.06);
-}
-.hero .logo{ height:60px; margin:0 0 6px 0; }
-.hero h1{
-  color: var(--bitel-deep) !important;
-  font-weight: 800; margin: 8px 0 0;
-  font-size: clamp(22px, 2.6vw, 28px);
-}
+        /* Tarjeta/página central */
+        .page {
+            background: var(--ui-bg);
+            max-width: 1180px;
+            min-height: 100vh;
+            margin: 18px auto;
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            padding: 0 20px 32px;
+        }
 
-/* Cards y áreas blancas */
-.card{
-  border-radius: 14px !important;
-  box-shadow: var(--shadow-md) !important;
-  border: 1px solid rgba(0,0,0,.06);
-}
-#map{ border-radius: 14px !important; }
-textarea{
-  border-radius: 14px !important;
-  border: 1px solid rgba(0,0,0,.06) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,.05);
-}
+        /* Hero amarillo con logo y título */
+        .hero {
+            background: var(--bitel-yellow);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            padding: 26px 16px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(0, 0, 0, .06);
+        }
 
-/* Barra y campos */
-.bar{ padding: 18px; gap: 12px; }
-input[type="number"], input[type="file"]{
-  border:1.5px solid rgba(0,0,0,.14) !important;
-  border-radius: 12px !important;
-}
-input[type="number"]:focus{
-  outline:none; border-color: var(--bitel-cyan) !important;
-  box-shadow: var(--focus) !important;
-}
-.pill{ background:#eef2f5; }
+        .hero .logo {
+            height: 60px;
+            margin: 0 0 6px 0;
+        }
 
-/* Botones: cian primario, azul profundo para el resto */
-.btn{
-  background:#0E4051; color:#E8FBFF;
-  border:none; border-radius: var(--radius) !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
-  transition: background .15s ease, transform .04s ease, box-shadow .2s ease;
-}
-.btn:hover{ background: var(--bitel-teal); }
-.btn:active{ transform: translateY(1px); }
-.btn.accent{
-  background: var(--bitel-cyan) !important;
-  color:#003244 !important;
-  font-weight: 700;
-  box-shadow: 0 4px 14px rgba(0,184,235,.25);
-}
-.btn.accent:hover{ background: var(--bitel-teal) !important; color:#fff !important; }
-<body>
-.hero .logo{
-  height: 76px;           /* ajusta 60–90px al gusto para igualar la otra página */
-  width: auto;
-  display: block;
-  margin: 0 auto 8px;     /* centrado y un poco de espacio con el título */
-}
+        .hero h1 {
+            color: var(--bitel-deep) !important;
+            font-weight: 800;
+            margin: 8px 0 0;
+            font-size: clamp(22px, 2.6vw, 28px);
+        }
 
+        /* Cards y áreas blancas */
+        .card {
+            border-radius: 14px !important;
+            box-shadow: var(--shadow-md) !important;
+            border: 1px solid rgba(0, 0, 0, .06);
+        }
 
+        #map {
+            border-radius: 14px !important;
+        }
+
+        textarea {
+            border-radius: 14px !important;
+            border: 1px solid rgba(0, 0, 0, .06) !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .05);
+        }
+
+        /* Barra y campos */
+        .bar {
+            padding: 18px;
+            gap: 12px;
+        }
+
+        input[type="number"],
+        input[type="file"] {
+            border: 1.5px solid rgba(0, 0, 0, .14) !important;
+            border-radius: 12px !important;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--bitel-cyan) !important;
+            box-shadow: var(--focus) !important;
+        }
+
+        .pill {
+            background: #eef2f5;
+        }
+
+        /* Botones: cian primario, azul profundo para el resto */
+        .btn {
+            background: #0E4051;
+            color: #E8FBFF;
+            border: none;
+            border-radius: var(--radius) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+            transition: background .15s ease, transform .04s ease, box-shadow .2s ease;
+        }
+
+        .btn:hover {
+            background: var(--bitel-teal);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn.accent {
+            background: var(--bitel-cyan) !important;
+            color: #003244 !important;
+            font-weight: 700;
+            box-shadow: 0 4px 14px rgba(0, 184, 235, .25);
+        }
+
+        .btn.accent:hover {
+            background: var(--bitel-teal) !important;
+            color: #fff !important;
+        }
+
+        <body>.hero .logo {
+            height: 76px;
+            /* ajusta 60–90px al gusto para igualar la otra página */
+            width: auto;
+            display: block;
+            margin: 0 auto 8px;
+            /* centrado y un poco de espacio con el título */
+        }
     </style>
 </head>
 
 <body>
-	<div class="page">
-<header class="hero">
-    <img src="bitel_logo.png" class="logo" alt="bitel">	
-    <h1>Fiber designer over MT</h1>
-</header>
+    <div class="page">
+        <header class="hero">
+            <img src="bitel_logo.png" class="logo" alt="bitel">
+            <h1>Fiber designer over MT</h1>
+        </header>
 
 
-    <div class="bar">
-        <input id="fileLine" type="file" accept=".kmz,.kml" hidden />
-        <button class="btn accent" id="btnPickLine">Seleccionar Línea KMZ/KML</button>
-        <span class="pill">Base: <b id="baseName">postes.csv.zip</b></span>
-        <label class="pill">Radio (m): <input id="radius" type="number" value="20" min="1"></label>
-        <button class="btn" id="btnExtract">Extraer</button>
-        <button class="btn" id="btnCopy">Copiar</button>
-        <button class="btn" id="btnDownloadTXT">Descargar TXT</button>
-        <button class="btn" id="btnDownloadKMZ">Descargar KMZ</button>
-        <button class="btn secondary" id="btnShowMap">Ver en mapa</button>
-    </div>
-
-    <div class="card">
-        <div class="row muted" style="margin-bottom:8px;">
-            <span>La app cargará <b>postes.csv.zip</b> cuando lo necesite. También puedes cargar CSV(s)
-                manualmente:</span>
-            <input id="filePosts" type="file" accept=".csv" multiple>
+        <div class="bar">
+            <input id="fileLine" type="file" accept=".kmz,.kml" hidden />
+            <button class="btn accent" id="btnPickLine">Seleccionar Línea KMZ/KML</button>
+            <span class="pill">Base: <b id="baseName">postes.csv.zip</b></span>
+            <label class="pill">Radio (m): <input id="radius" type="number" value="20" min="1"></label>
+            <button class="btn" id="btnExtract">Extraer</button>
+            <button class="btn" id="btnCopy">Copiar</button>
+            <button class="btn" id="btnDownloadTXT">Descargar TXT</button>
+            <button class="btn" id="btnDownloadKMZ">Descargar KMZ</button>
+            <button class="btn secondary" id="btnShowMap">Ver en mapa</button>
         </div>
-        <div class="status">
-            <div id="statusPosts">Postes cargados: <b>0</b></div>
-            <div id="statusLine">Línea: <b class="bad">no cargada</b></div>
-            <div id="statusResult">Filtrados: <b>0</b></div>
-        </div>
-        <div id="map" style="display:none; margin-top:10px;"></div>
-    </div>
 
-    <div class="card">
-        <div id="compare" class="kpi muted">Comparación de longitudes: <b>—</b></div>
-        <textarea id="output" placeholder="INICIO;lat;lon&#10;Nombre;lat;lon&#10;...&#10;FIN;lat;lon"></textarea>
-    </div>
-
-    <!-- === NUEVA TARJETA: Diseño de postes de Madera (ADICIÓN) === -->
-    <div id="designCard" class="card" style="display:none;">
-        <h3 style="margin:6px 0 12px;">Diseñar postes de Madera</h3>
-        <div class="row">
-            <label class="pill">Origen:
-                <select id="designStart"></select>
-            </label>
-            <label class="pill">Fin:
-                <select id="designEnd"></select>
-            </label>
-            <label class="pill">Distancia (m):
-                <input id="designSpacing" type="number" value="60" min="5" step="1">
-            </label>
-            <button class="btn" id="btnPreviewDesign">Previsualizar</button>
-            <button class="btn accent" id="btnInsertDesign" disabled>Insertar al resultado</button>
-            <button class="btn secondary" id="btnClearDesign">Limpiar diseño actual</button>
+        <div class="card">
+            <div class="row muted" style="margin-bottom:8px;">
+                <span>La app cargará <b>postes.csv.zip</b> cuando lo necesite. También puedes cargar CSV(s)
+                    manualmente:</span>
+                <input id="filePosts" type="file" accept=".csv" multiple>
+            </div>
+            <div class="status">
+                <div id="statusPosts">Postes cargados: <b>0</b></div>
+                <div id="statusLine">Línea: <b class="bad">no cargada</b></div>
+                <div id="statusResult">Filtrados: <b>0</b></div>
+            </div>
+            <div id="map" style="display:none; margin-top:10px;"></div>
         </div>
-        <div class="kpi muted">Generados: <b id="designCount">0</b></div>
-        <div class="muted" style="font-size:12px;">
-            1) Elige origen y fin (de los postes extraídos). 2) Define distancia. 3) Previsualiza (en rojo). 4) Inserta
-            al resultado (TXT/KMZ se actualizarán). Puedes repetir cuantas veces quieras.
-        </div>
-    </div>
 
-</div> <!-- /.page -->
+        <div class="card">
+            <div id="compare" class="kpi muted">Comparación de longitudes: <b>—</b></div>
+            <textarea id="output" placeholder="INICIO;lat;lon&#10;Nombre;lat;lon&#10;...&#10;FIN;lat;lon"></textarea>
+        </div>
+
+        <!-- === NUEVA TARJETA: Diseño de postes de Madera (ADICIÓN) === -->
+        <div id="designCard" class="card" style="display:none;">
+            <h3 style="margin:6px 0 12px;">Diseñar postes de Madera</h3>
+            <div class="row">
+                <label class="pill">Origen:
+                    <select id="designStart"></select>
+                </label>
+                <label class="pill">Fin:
+                    <select id="designEnd"></select>
+                </label>
+                <label class="pill">Distancia (m):
+                    <input id="designSpacing" type="number" value="60" min="5" step="1">
+                </label>
+                <button class="btn" id="btnPreviewDesign">Previsualizar</button>
+                <button class="btn accent" id="btnInsertDesign" disabled>Insertar al resultado</button>
+                <button class="btn secondary" id="btnClearDesign">Limpiar diseño actual</button>
+            </div>
+            <div class="kpi muted">Generados: <b id="designCount">0</b></div>
+            <div class="muted" style="font-size:12px;">
+                1) Elige origen y fin (de los postes extraídos). 2) Define distancia. 3) Previsualiza (en rojo). 4)
+                Inserta
+                al resultado (TXT/KMZ se actualizarán). Puedes repetir cuantas veces quieras.
+            </div>
+        </div>
+
+    </div> <!-- /.page -->
     <script>
         (function () {
             const ZIP_NAME = "postes.csv.zip";
@@ -494,35 +537,17 @@ input[type="number"]:focus{
             function buildKML(rows) {
                 const header = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>`;
                 const footer = `</Document></kml>`;
-                    const style = `
-      <Style id="line">
-        <LineStyle><color>ff00aaff</color><width>3</width></LineStyle>
-      </Style>
-      <Style id="pt">
-        <IconStyle><color>ff10b981</color><scale>1.1</scale>
-          <Icon><href>https://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href></Icon>
-        </IconStyle>
-      </Style>
-      <Style id="ptDesign">
-        <IconStyle><color>ff1d11e1</color><scale>1.1</scale>
-          <Icon><href>https://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
-        </IconStyle>
-      </Style>`;
-
+                const style = `<Style id="line"><LineStyle><color>ff00aaff</color><width>3</width></LineStyle></Style>
+                   <Style id="pt"><IconStyle><color>ff10b981</color><scale>1.1</scale>
+                   <Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href></Icon></IconStyle></Style>`;
                 let linePlm = "";
                 if (line) {
                     const coords = line.geometry.coordinates.map(([lon, lat]) => `${lon},${lat},0`).join(" ");
                     linePlm = `<Placemark><name>Línea cargada</name><styleUrl>#line</styleUrl><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
                 }
-                    const ptsPlm = rows.map(r => {
-        const styleUrl = r.designed ? "#ptDesign" : "#pt";
-        return `<Placemark>
-                  <name>${escapeXml(r.name)}</name>
-                  <styleUrl>${styleUrl}</styleUrl>
-                  <Point><coordinates>${r.lon},${r.lat},0</coordinates></Point>
-                </Placemark>`;
-    }).join("");
-
+                const ptsPlm = rows.map(r => `<Placemark><name>${escapeXml(r.name)}</name><styleUrl>#pt</styleUrl><Point><coordinates>${r.lon},${r.lat},0</coordinates></Point></Placemark>`).join("");
+                return header + style + linePlm + ptsPlm + footer;
+            }
 
             function updateLengthComparison(rows) {
                 if (!line) { setCompareText("—"); return; }
