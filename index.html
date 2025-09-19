@@ -494,17 +494,35 @@ input[type="number"]:focus{
             function buildKML(rows) {
                 const header = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>`;
                 const footer = `</Document></kml>`;
-                const style = `<Style id="line"><LineStyle><color>ff00aaff</color><width>3</width></LineStyle></Style>
-                   <Style id="pt"><IconStyle><color>ff10b981</color><scale>1.1</scale>
-                   <Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href></Icon></IconStyle></Style>`;
+                    const style = `
+      <Style id="line">
+        <LineStyle><color>ff00aaff</color><width>3</width></LineStyle>
+      </Style>
+      <Style id="pt">
+        <IconStyle><color>ff10b981</color><scale>1.1</scale>
+          <Icon><href>https://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href></Icon>
+        </IconStyle>
+      </Style>
+      <Style id="ptDesign">
+        <IconStyle><color>ff1d11e1</color><scale>1.1</scale>
+          <Icon><href>https://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+        </IconStyle>
+      </Style>`;
+
                 let linePlm = "";
                 if (line) {
                     const coords = line.geometry.coordinates.map(([lon, lat]) => `${lon},${lat},0`).join(" ");
                     linePlm = `<Placemark><name>Línea cargada</name><styleUrl>#line</styleUrl><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
                 }
-                const ptsPlm = rows.map(r => `<Placemark><name>${escapeXml(r.name)}</name><styleUrl>#pt</styleUrl><Point><coordinates>${r.lon},${r.lat},0</coordinates></Point></Placemark>`).join("");
-                return header + style + linePlm + ptsPlm + footer;
-            }
+                    const ptsPlm = rows.map(r => {
+        const styleUrl = r.designed ? "#ptDesign" : "#pt";
+        return `<Placemark>
+                  <name>${escapeXml(r.name)}</name>
+                  <styleUrl>${styleUrl}</styleUrl>
+                  <Point><coordinates>${r.lon},${r.lat},0</coordinates></Point>
+                </Placemark>`;
+    }).join("");
+
 
             function updateLengthComparison(rows) {
                 if (!line) { setCompareText("—"); return; }
