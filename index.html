@@ -59,11 +59,6 @@
             margin: 0;
         }
 
-
-        header img {
-            height: 48px;
-        }
-
         h1 {
             font-size: 22px;
             margin: 0;
@@ -296,7 +291,7 @@
             color: #fff !important;
         }
 
-        <body>.hero .logo {
+        .hero .logo {
             height: 76px;
             /* ajusta 60–90px al gusto para igualar la otra página */
             width: auto;
@@ -380,6 +375,7 @@
             const INICIO_VALUE = -1;   // sentinel para inicio real de la LÍNEA
             let FIN_VALUE = null; // se setea dinámicamente = filtered.length
             let line = null;          // Feature<LineString>
+            let lineName = "";  // nombre de la linea cargada
             let map, layerLine, layerPostesFiltered;
             let postsLoaded = false;
 
@@ -543,7 +539,10 @@
                 let linePlm = "";
                 if (line) {
                     const coords = line.geometry.coordinates.map(([lon, lat]) => `${lon},${lat},0`).join(" ");
-                    linePlm = `<Placemark><name>Línea cargada</name><styleUrl>#line</styleUrl><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
+                    const lName = (lineName && typeof lineName === "string") ? lineName : "Línea";
+                    linePlm = `<Placemark><name>${escapeXml(lName)}</name><styleUrl>#line</styleUrl><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
+
+
                 }
                 const ptsPlm = rows.map(r => `<Placemark><name>${escapeXml(r.name)}</name><styleUrl>#pt</styleUrl><Point><coordinates>${r.lon},${r.lat},0</coordinates></Point></Placemark>`).join("");
                 return header + style + linePlm + ptsPlm + footer;
@@ -574,6 +573,33 @@
                 const gj = parseKmlTextToGeoJSON(kmlText);
                 line = lineStringFromGeojson(gj);
                 setLineLoaded(!!line);
+                // Intentar derivar un nombre para la línea
+                (function () {
+                    // 1) Del feature (toGeoJSON usualmente pone properties.name si existe)
+                    const fromFeature = (line && line.properties && typeof line.properties.name === "string")
+                        ? line.properties.name.trim() : "";
+
+                    // 2) Del <name> del Document/Placemark en el KML original
+                    let fromKml = "";
+                    try {
+                        const kmlDoc = new DOMParser().parseFromString(kmlText, "text/xml");
+                        const nameNode = kmlDoc.querySelector("Document > name") || kmlDoc.querySelector("Placemark > name");
+                        if (nameNode && nameNode.textContent) fromKml = nameNode.textContent.trim();
+                    } catch (_) { /* noop */ }
+
+                    // 3) Del nombre del archivo como último recurso
+                    const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
+
+                    lineName = fromFeature || fromKml || baseFromFile;
+
+                    // Refrescar el estado visual para que se vea el nombre en la UI
+                    // Reutilizamos el elemento ya existente de estado:
+                    try {
+                        const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                        document.getElementById("statusLine").innerHTML = "Línea: <b class='ok'>" + esc(lineName) + "</b>";
+                    } catch (_) { }
+                })();
+
                 if (!line) { alert("No se encontró una LineString en el archivo."); return; }
                 setCompareText("—");
                 // PRECARGA la base justo después de cargar la línea
@@ -627,11 +653,12 @@
                 if (!filtered.length) { alert("Primero ejecuta 'Extraer'"); return; }
                 const kml = buildKML(filtered);
                 const zip = new JSZip();
-                zip.file("postes_filtrados.kml", kml);
+                const base = (lineName && typeof lineName === "string") ? lineName : "postes_filtrados";
+                zip.file(`${base}_DESIGN.kml`, kml);
                 const blob = await zip.generateAsync({ type: "blob" });
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
-                a.download = "postes_filtrados.kmz";
+                a.download = `${base}_DESIGN.kmz`;
                 a.click();
                 URL.revokeObjectURL(a.href);
             };
@@ -1013,4 +1040,4 @@
     </script>
 </body>
 
-</html>4
+</html>
