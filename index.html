@@ -706,53 +706,57 @@
             document.getElementById("btnPickLine").onclick = () => document.getElementById("fileLine").click();
 
             document.getElementById("fileLine").addEventListener("change", async (ev) => {
-              const file = ev.target.files[0];
-              if (!file) return;
-            
-              // Lee KML/KMZ a texto
-              const kmlText = file.name.toLowerCase().endsWith(".kmz")
-                ? await readKMZtoKMLText(file)
-                : await file.text();
-            
-              // Parseo a GeoJSON y obtención de la LineString
-              const gj = parseKmlTextToGeoJSON(kmlText);
-              line = lineStringFromGeojson(gj);
-            
-              // === Derivar y guardar nombre de la línea ===
-              const fromFeature =
-                (line && line.properties && typeof line.properties.name === "string")
-                  ? line.properties.name.trim()
-                  : "";
-            
-              let fromKml = "";
               try {
-                const kmlDoc = new DOMParser().parseFromString(kmlText, "text/xml");
-                // Toma el primero que exista entre <Document><name> y <Placemark><name>
-                const nameNode = kmlDoc.querySelector("Document > name, Placemark > name");
-                if (nameNode && nameNode.textContent) fromKml = nameNode.textContent.trim();
-              } catch (_) {}
+                const file = ev.target.files && ev.target.files[0];
+                if (!file) return;
             
-              const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
-              lineName = fromFeature || fromKml || baseFromFile;
-              // 🔔 Actualiza el estado mostrando el nombre
-              setLineLoaded(!!line, lineName);
-              // === fin nombre ===
+                // Leer KML/KMZ a texto
+                const isKmz = file.name.toLowerCase().endsWith(".kmz");
+                const kmlText = isKmz ? await readKMZtoKMLText(file) : await file.text();
             
-              if (!line) {
-                alert("No se encontró una LineString en el archivo.");
-                return;
+                // Parsear a GeoJSON y obtener LineString
+                const gj = parseKmlTextToGeoJSON(kmlText) || { features: [] };
+                line = lineStringFromGeojson(gj);
+            
+                // Derivar nombre (feature.name -> <Document>/<Placemark> -> nombre de archivo)
+                const fromFeature =
+                  (line && line.properties && typeof line.properties.name === "string")
+                    ? line.properties.name.trim()
+                    : "";
+            
+                let fromKml = "";
+                try {
+                  const kmlDoc = new DOMParser().parseFromString(kmlText, "text/xml");
+                  const nameNode = kmlDoc.querySelector("Document > name, Placemark > name");
+                  if (nameNode && nameNode.textContent) fromKml = nameNode.textContent.trim();
+                } catch {}
+            
+                const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
+                lineName = fromFeature || fromKml || baseFromFile;
+            
+                // Actualiza estado (usa tu helper que ya escapa)
+                setLineLoaded(!!line, lineName);
+            
+                if (!line) {
+                  alert("No se encontró una LineString en el archivo.");
+                  return;
+                }
+            
+                // Reset UI al cargar nueva línea
+                filtered = [];
+                setResultCount(0);
+                setCompareText("—");
+                document.getElementById("output").value = "";
+                updateSpanSummary([]);
+            
+                // Precarga base de postes
+                await ensurePostsLoaded();
+              } catch (err) {
+                console.error("Fallo cargando la línea:", err);
+                alert("Ocurrió un error al cargar la línea. Revisa la consola del navegador para detalles.");
               }
-            
-              // 🔄 Reset de estado al cargar nueva línea
-              filtered = [];
-              setResultCount(0);
-              setCompareText("—");
-              document.getElementById("output").value = "";
-              updateSpanSummary([]);
-            
-              // Precarga la base justo después de cargar la línea
-              await ensurePostsLoaded();
             });
+
 
 
             // Intentar derivar un nombre para la línea
