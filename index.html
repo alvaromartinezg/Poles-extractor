@@ -736,7 +736,6 @@
                 document.getElementById("output").value = resultToTextOrdered(filtered);
                 setResultCount(filtered.length);
                 updateLengthComparison(filtered);
-                setResultCount(filtered.length);
                 updateSpanSummary(filtered);
 
             };
@@ -1162,6 +1161,7 @@
                 // 2) Actualizar UI heredada
                 setResultCount(filtered.length);
                 updateLengthComparison(filtered);
+                updateSpanSummary(filtered); 
                 document.getElementById("output").value = resultToTextOrdered(filtered);
 
                 // 3) Redibujar mapa coloreando diseñados
