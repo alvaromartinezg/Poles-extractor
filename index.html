@@ -706,42 +706,54 @@
             document.getElementById("btnPickLine").onclick = () => document.getElementById("fileLine").click();
 
             document.getElementById("fileLine").addEventListener("change", async (ev) => {
-            const file = ev.target.files[0]; 
-            if (!file) return;
-        
-            let kmlText;
-            if (file.name.toLowerCase().endsWith(".kmz")) {
-                kmlText = await readKMZtoKMLText(file);
-            } else {
-                kmlText = await file.text();
-            }
-        
-            const gj = parseKmlTextToGeoJSON(kmlText);
-            line = lineStringFromGeojson(gj);
-            setLineLoaded(!!line);
-            // === Derivar y guardar nombre de la línea ===
-            const fromFeature =
-              (line && line.properties && typeof line.properties.name === "string")
-                ? line.properties.name.trim()
-                : "";
+              const file = ev.target.files[0];
+              if (!file) return;
             
-            let fromKml = "";
-            try {
-              const kmlDoc = new DOMParser().parseFromString(kmlText, "text/xml");
-              const nameNode = kmlDoc.querySelector("Document > name, Placemark > name");
-              if (nameNode && nameNode.textContent) fromKml = nameNode.textContent.trim();
-            } catch (_) {}
+              // Lee KML/KMZ a texto
+              const kmlText = file.name.toLowerCase().endsWith(".kmz")
+                ? await readKMZtoKMLText(file)
+                : await file.text();
             
-            const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
-            lineName = fromFeature || fromKml || baseFromFile;
+              // Parseo a GeoJSON y obtención de la LineString
+              const gj = parseKmlTextToGeoJSON(kmlText);
+              line = lineStringFromGeojson(gj);
             
-            // Mostrar en el estado
-            const esc = s => s.replace(/[&<>"']/g, c => ({
-              '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-            }[c]));
-            document.getElementById("statusLine").innerHTML =
-              "Línea: <b class='ok'>" + esc(lineName) + "</b>";
-            // === fin nombre ===
+              // === Derivar y guardar nombre de la línea ===
+              const fromFeature =
+                (line && line.properties && typeof line.properties.name === "string")
+                  ? line.properties.name.trim()
+                  : "";
+            
+              let fromKml = "";
+              try {
+                const kmlDoc = new DOMParser().parseFromString(kmlText, "text/xml");
+                // Toma el primero que exista entre <Document><name> y <Placemark><name>
+                const nameNode = kmlDoc.querySelector("Document > name, Placemark > name");
+                if (nameNode && nameNode.textContent) fromKml = nameNode.textContent.trim();
+              } catch (_) {}
+            
+              const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
+              lineName = fromFeature || fromKml || baseFromFile;
+              // 🔔 Actualiza el estado mostrando el nombre
+              setLineLoaded(!!line, lineName);
+              // === fin nombre ===
+            
+              if (!line) {
+                alert("No se encontró una LineString en el archivo.");
+                return;
+              }
+            
+              // 🔄 Reset de estado al cargar nueva línea
+              filtered = [];
+              setResultCount(0);
+              setCompareText("—");
+              document.getElementById("output").value = "";
+              updateSpanSummary([]);
+            
+              // Precarga la base justo después de cargar la línea
+              await ensurePostsLoaded();
+            });
+
 
             // Intentar derivar un nombre para la línea
             (function () {
