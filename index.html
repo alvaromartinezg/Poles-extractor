@@ -600,10 +600,7 @@
 
                     // Refrescar el estado visual para que se vea el nombre en la UI
                     // Reutilizamos el elemento ya existente de estado:
-                    try {
-                        const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-                        document.getElementById("statusLine").innerHTML = "Línea: <b class='ok'>" + esc(lineName) + "</b>";
-                    } catch (_) { }
+                   setLineLoaded(true); // muestra: Línea: cargada
                 })();
 
                 if (!line) { alert("No se encontró una LineString en el archivo."); return; }
