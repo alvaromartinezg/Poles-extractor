@@ -320,8 +320,6 @@
             <button class="btn" id="btnDownloadTXT">Descargar TXT</button>
             <button class="btn" id="btnDownloadKMZ">Descargar KMZ</button>
             <button class="btn secondary" id="btnShowMap">Ver en mapa</button>
-            <button class="btn secondary" id="btnToggleBase" disabled>Satélite</button>
-
         </div>
 
         <div class="card">
@@ -380,10 +378,6 @@
             let lineName = "";  // nombre de la linea cargada
             let map, layerLine, layerPostesFiltered;
             let postsLoaded = false;
-            let tileOSM = null, tileESRI = null;
-            let currentBase = "osm"; // "osm" o "sat"
-            const btnToggleBase = document.getElementById("btnToggleBase");
-
 
             // ---------- Estado UI ----------
             const elBase = document.getElementById("baseName");
@@ -600,7 +594,10 @@
 
                     // Refrescar el estado visual para que se vea el nombre en la UI
                     // Reutilizamos el elemento ya existente de estado:
-                   setLineLoaded(true); // muestra: Línea: cargada
+                    try {
+                        const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                        document.getElementById("statusLine").innerHTML = "Línea: <b class='ok'>" + esc(lineName) + "</b>";
+                    } catch (_) { }
                 })();
 
                 if (!line) { alert("No se encontró una LineString en el archivo."); return; }
@@ -666,71 +663,33 @@
                 URL.revokeObjectURL(a.href);
             };
 
-                document.getElementById("btnShowMap").onclick = () => {
-                    const mapDiv = document.getElementById("map");
-                    mapDiv.style.display = "block";
-                    if (!map) {
-                        map = L.map("map");
-                
-                        // Base calles (OSM)
-                        tileOSM = L.tileLayer(
-                            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                            { maxZoom: 19, attribution: "© OpenStreetMap" }
-                        ).addTo(map);
-                
-                        // Base satélite (Esri World Imagery)
-                        tileESRI = L.tileLayer(
-                            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                            { attribution: "Tiles © Esri" }
-                        );
-                
-                        layerLine = L.geoJSON(null, { style: { color: "#0ea5e9", weight: 3 } }).addTo(map);
-                        layerPostesFiltered = L.layerGroup().addTo(map);
-                        map.setView([-9.4, -77.57], 12);
-                
-                        // habilita el botón toggle
-                        btnToggleBase.disabled = false;
-                        btnToggleBase.textContent = "Satélite"; // indica a qué cambiará
-                    }
-                
-                    // Limpia capas
-                    layerLine.clearLayers();
-                    layerPostesFiltered.clearLayers();
-                
-                    if (line) {
-                        layerLine.addData(line);
-                        map.fitBounds(layerLine.getBounds(), { padding: [20, 20] });
-                    }
-                    if (filtered.length) {
-                        filtered.forEach(p => {
-                            L.circleMarker([p.lat, p.lon], { radius: 5 })
-                                .bindPopup(`<b>${p.name}</b>`)
-                                .addTo(layerPostesFiltered);
-                        });
-                        const group = L.featureGroup([layerLine, layerPostesFiltered]);
-                        map.fitBounds(group.getBounds(), { padding: [20, 20] });
-                    }
-                };
+            document.getElementById("btnShowMap").onclick = () => {
+                const mapDiv = document.getElementById("map");
+                mapDiv.style.display = "block";
+                if (!map) {
+                    map = L.map("map");
+                    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+                    layerLine = L.geoJSON(null, { style: { color: "#0ea5e9", weight: 3 } }).addTo(map);
+                    layerPostesFiltered = L.layerGroup().addTo(map);
+                    map.setView([-9.4, -77.57], 12);
+                }
+                layerLine.clearLayers();
+                layerPostesFiltered.clearLayers();
 
-                btnToggleBase.onclick = () => {
-                  if (!map || !tileOSM || !tileESRI) {
-                    alert("Primero pulsa 'Ver en mapa'.");
-                    return;
-                  }
-                  if (currentBase === "osm") {
-                    // Cambiar a satélite
-                    if (map.hasLayer(tileOSM)) map.removeLayer(tileOSM);
-                    tileESRI.addTo(map);
-                    currentBase = "sat";
-                    btnToggleBase.textContent = "Calles";
-                  } else {
-                    // Volver a calles
-                    if (map.hasLayer(tileESRI)) map.removeLayer(tileESRI);
-                    tileOSM.addTo(map);
-                    currentBase = "osm";
-                    btnToggleBase.textContent = "Satélite";
-                  }
-                };
+                if (line) {
+                    layerLine.addData(line);
+                    map.fitBounds(layerLine.getBounds(), { padding: [20, 20] });
+                }
+                if (filtered.length) {
+                    filtered.forEach(p => {
+                        L.circleMarker([p.lat, p.lon], { radius: 5 })
+                            .bindPopup(`<b>${p.name}</b>`)
+                            .addTo(layerPostesFiltered);
+                    });
+                    const group = L.featureGroup([layerLine, layerPostesFiltered]);
+                    map.fitBounds(group.getBounds(), { padding: [20, 20] });
+                }
+            };
 
             // Estado inicial
             setLineLoaded(false);
