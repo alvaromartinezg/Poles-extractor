@@ -719,7 +719,30 @@
             const gj = parseKmlTextToGeoJSON(kmlText);
             line = lineStringFromGeojson(gj);
             setLineLoaded(!!line);
-        
+            // === Derivar y guardar nombre de la línea ===
+            const fromFeature =
+              (line && line.properties && typeof line.properties.name === "string")
+                ? line.properties.name.trim()
+                : "";
+            
+            let fromKml = "";
+            try {
+              const kmlDoc = new DOMParser().parseFromString(kmlText, "text/xml");
+              const nameNode = kmlDoc.querySelector("Document > name, Placemark > name");
+              if (nameNode && nameNode.textContent) fromKml = nameNode.textContent.trim();
+            } catch (_) {}
+            
+            const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
+            lineName = fromFeature || fromKml || baseFromFile;
+            
+            // Mostrar en el estado
+            const esc = s => s.replace(/[&<>"']/g, c => ({
+              '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+            }[c]));
+            document.getElementById("statusLine").innerHTML =
+              "Línea: <b class='ok'>" + esc(lineName) + "</b>";
+            // === fin nombre ===
+
             // Intentar derivar un nombre para la línea
             (function () {
                 const fromFeature = (line && line.properties && typeof line.properties.name === "string")
