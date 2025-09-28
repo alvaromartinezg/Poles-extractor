@@ -438,9 +438,14 @@
             const stRes = document.getElementById("statusResult");
             const elCompare = document.getElementById("compare");
             function setPostsCount(n) { stPosts.innerHTML = "Postes cargados: <b>" + n + "</b>"; }
-            function setLineLoaded(ok) {
-                stLine.innerHTML = "Línea: <b class='" + (ok ? "ok" : "bad") + "'>" + (ok ? "cargada" : "no cargada") + "</b>";
+            function setLineLoaded(ok, name) {
+              const label = ok ? (name && String(name).trim() ? name : "cargada") : "no cargada";
+              stLine.innerHTML = "Línea: <b class='" + (ok ? "ok" : "bad") + "'>" + 
+            // escape básico
+            label.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) + 
+            "</b>";
             }
+
             function setResultCount(n) { stRes.innerHTML = "Filtrados: <b>" + n + "</b>"; }
             function setCompareText(t) { elCompare.innerHTML = "Comparación de longitudes: <b>" + t + "</b>"; }
 
@@ -729,6 +734,7 @@
         
                 const baseFromFile = file.name.replace(/\.(kmz|kml)$/i, "");
                 lineName = fromFeature || fromKml || baseFromFile;
+                setLineLoaded(!!line, lineName);
         
                 try {
                     const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
