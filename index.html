@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BITEL MT pole extractor v3</title>
+    <title>BITEL MT pole extractor v5</title>
 
     <!-- Anti-cache del HTML -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -299,11 +299,164 @@
             margin: 0 auto 8px;
             /* centrado y un poco de espacio con el título */
         }
+         /* ===== Spinner Overlay ===== */
+        #loadingOverlay{
+          position: fixed; inset: 0; 
+          background: rgba(255,255,255,.75);
+          display: none;                /* oculto por defecto */
+          align-items: center; justify-content: center;
+          z-index: 9999;
+          backdrop-filter: blur(2px);
+        }
+        #loadingOverlay .loader{
+          width: 48px; height: 48px;
+          border: 4px solid #e5e7eb;
+          border-top-color: var(--bitel-cyan);
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+          box-shadow: 0 2px 8px rgba(0,0,0,.08);
+        }
+        #loadingOverlay .loader-text{
+          margin-top: 12px; font-weight: 600; color: #0E4051;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #statusPosts {
+          display: none !important;
+        }
+        /* Layout 1/2 + 1/2 para coordenadas y estadísticas */
+        .two-cols{
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          align-items: start;
+        }
+        /* Card/tabla de coordenadas */
+        .coords-card{
+          background:#fff;
+          border:1px solid rgba(0,0,0,.06);
+          border-radius:14px;
+          padding:10px 12px;
+          box-shadow:0 8px 24px rgba(0,0,0,.05);
+        }
+        @media (max-width: 960px){
+          .two-cols{ grid-template-columns: 1fr; }
+        }
+        /* === Igualar estilos de la tabla de coordenadas a la tarjeta de KV === */
+            .coords-card{ 
+              font-size: 13px;            /* mismo tamaño que .stats-card .stats-grid */
+            }
+            
+            .coords-head{
+              font-size: 14px;            /* igual a subtítulo de la tarjeta derecha */
+              color: #0E4051;
+              margin: 2px 0 8px;
+              font-weight: 600;
+            }
+            
+            .coords-table th,
+            .coords-table td{
+              padding: 6px 8px;           /* más compacto para que no “grite” */
+              line-height: 1.25;
+            }
+            
+            /* Mantén el encabezado pegajoso y legible */
+            .coords-table thead th{
+              position: sticky;
+              top: 0;
+              z-index: 1;
+              background: #f8fafc;
+              font-weight: 700;
+            }
+
+        .stats-card{
+          background: #fff;
+          border: 1px solid rgba(0,0,0,.06);
+          border-radius: 14px;
+          padding: 12px 14px;
+          box-shadow: 0 8px 24px rgba(0,0,0,.05);
+        }
+        .stats-card h4{
+          margin: 4px 0 10px;
+          font-size: 15px;
+          color: #0E4051;
+        }
+        
+        .stats-grid{
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 6px 10px;
+          align-items: center;
+        }
+        
+        /* Asegura que el textarea no intente ocupar todo por CSS heredado */
+        .two-cols textarea#output{
+          width: 100%;
+          min-height: 260px;
+        }
+        /* Texto en rojo para el campo "More than 1000" */
+        .danger {
+          color: #dc2626;
+          font-weight: 700;
+        }
+        /* Tamaños más sobrios para el panel derecho */
+        .stats-card h4{
+          font-size: 14px;       /* antes 15–16 */
+          margin: 2px 0 8px;
+        }
+        .stats-card .stats-grid{
+          font-size: 13px;       /* iguala a botones */
+        }
+        .stats-card .muted{
+          font-size: 12px;
+        }
+        /* Contenedor con scroll para la tabla de coordenadas */
+        .coords-body{
+          max-height: 320px;     /* ajusta 240–420px a tu gusto */
+          overflow: auto;
+          border: 1px solid #e5e7eb;
+          border-radius: 10px;
+        }
+        
+        /* Encabezado fijo mientras haces scroll */
+        .coords-table thead th{
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          background: #f8fafc;   /* que no “desaparezca” al hacer scroll */
+        }
+        
+        /* Que no “salte” el layout y corte textos largos */
+        .coords-table{
+          table-layout: fixed;
+        }
+        .coords-table th:nth-child(1),
+        .coords-table td:nth-child(1){
+          width: 46%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .coords-table th:nth-child(2),
+        .coords-table td:nth-child(2),
+        .coords-table th:nth-child(3),
+        .coords-table td:nth-child(3){
+          width: 27%;
+          text-align: right;       /* números alineados a la derecha */
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+
     </style>
+
 </head>
 
 <body>
     <div class="page">
+        <div id="loadingOverlay" aria-hidden="true">
+          <div class="loader"></div>
+          <div class="loader-text">Cargando base …</div>
+        </div>
+
         <header class="hero">
             <img src="bitel_logo.png" class="logo" alt="bitel">
             <h1>Fiber designer over MT</h1>
@@ -313,7 +466,6 @@
         <div class="bar">
             <input id="fileLine" type="file" accept=".kmz,.kml" hidden />
             <button class="btn accent" id="btnPickLine">Seleccionar Línea KMZ/KML</button>
-            <span class="pill">Base: <b id="baseName">postes.csv.zip</b></span>
             <label class="pill">Radio (m): <input id="radius" type="number" value="20" min="1"></label>
             <button class="btn" id="btnExtract">Extraer</button>
             <button class="btn" id="btnCopy">Copiar</button>
@@ -323,23 +475,79 @@
         </div>
 
         <div class="card">
-            <div class="row muted" style="margin-bottom:8px;">
-                <span>La app cargará <b>postes.csv.zip</b> cuando lo necesite. También puedes cargar CSV(s)
-                    manualmente:</span>
-                <input id="filePosts" type="file" accept=".csv" multiple>
-            </div>
             <div class="status">
                 <div id="statusPosts">Postes cargados: <b>0</b></div>
                 <div id="statusLine">Línea: <b class="bad">no cargada</b></div>
-                <div id="statusResult">Filtrados: <b>0</b></div>
+                <div id="statusResult">Postes encontrados: <b>0</b></div>
             </div>
             <div id="map" style="display:none; margin-top:10px;"></div>
         </div>
 
         <div class="card">
-            <div id="compare" class="kpi muted">Comparación de longitudes: <b>—</b></div>
-            <textarea id="output" placeholder="INICIO;lat;lon&#10;Nombre;lat;lon&#10;...&#10;FIN;lat;lon"></textarea>
+          <div id="compare" class="kpi muted">Comparación de longitudes: <b>—</b></div>
+        
+          <div class="two-cols">
+            <!-- Izquierda: coordenadas -->
+            <!-- Izquierda: tabla de coordenadas -->
+            <div class="coords-card">
+              <div class="coords-head">Coordenadas</div>
+              <div class="coords-body">
+                <table class="coords-table" id="coordTable">
+                  <thead>
+                    <tr><th>Nombre</th><th>Lat</th><th>Lon</th></tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:6px;">
+                * Se actualiza al extraer o insertar postes.
+              </div>
+            </div>
+            
+            <!-- TXT oculto (para Copiar/Descargar) -->
+            <textarea id="output" hidden></textarea>
+
+        
+            <!-- Derecha: estadísticas de tramos -->
+            <div class="stats-card">
+              <h4>Tramos por distancia</h4>
+              <div class="stats-grid">
+                <div>KV100 <span class="muted">(&lt;100 m)</span></div>
+                <div><b id="kv100">0</b></div>
+            
+                <div>KV200 <span class="muted">[100–200 m)</span></div>
+                <div><b id="kv200">0</b></div>
+            
+                <div>KV300 <span class="muted">[200–300 m)</span></div>
+                <div><b id="kv300">0</b></div>
+            
+                <div>KV500 <span class="muted">[300–500 m)</span></div>
+                <div><b id="kv500">0</b></div>
+            
+                <div>KV1000 <span class="muted">[500–1000 m)</span></div>
+                <div><b id="kv1000">0</b></div>
+            
+                <div><span class="danger">More than 1000</span></div>
+                <div><b id="kvMore">0</b></div>
+                  
+                <div>Total tramos</div>
+                <div><b id="kvTotal">0</b></div>
+
+              </div>
+            
+              <div class="muted" style="font-size:12px;margin-top:8px;">
+                * Rangos <b>exclusivos</b>: &lt;100, [100–200), [200–300), [300–500), [500–1000), ≥1000.
+              </div>
+            </div>
+
+        
+              <div class="muted" style="font-size:12px;margin-top:8px;">
+                * Cuenta tramos consecutivos de postes con distancia menor al umbral (cumulativo).
+              </div>
+            </div>
+          </div>
         </div>
+
 
         <!-- === NUEVA TARJETA: Diseño de postes de Madera (ADICIÓN) === -->
         <div id="designCard" class="card" style="display:none;">
@@ -435,6 +643,41 @@
                 const csvText = await zip.files[entry].async("text");
                 return await parseCSVWithPapaAsync(csvText);
             }
+            // ===== Control del Spinner + Timeout de 2 minutos =====
+            let loadTimeout = null;
+            
+            function showLoading() {
+              const el = document.getElementById('loadingOverlay');
+              if (el) el.style.display = 'flex';
+            
+              // Por si hubiera un timeout anterior
+              if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
+            
+              // Programa el timeout de 2 minutos (120000 ms)
+              loadTimeout = setTimeout(() => {
+                hideLoading();
+                alert("Revise su conexión a internet o contacte al administrador.");
+              }, 120000);
+            }
+            
+            function hideLoading() {
+              const el = document.getElementById('loadingOverlay');
+              if (el) el.style.display = 'none';
+              if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
+            }
+            
+            // Envuelve ensurePostsLoaded() para controlar el spinner/timeout
+            async function loadBaseWithSpinner() {
+              try {
+                showLoading();
+                await ensurePostsLoaded();   // ← tu función original que carga postes.csv.zip
+                hideLoading();               // solo si terminó OK
+              } catch (e) {
+                hideLoading();
+                // Mensaje claro (no mencionar carga manual, ya la quitaste)
+                alert("No se pudo cargar postes.csv.zip. Verifique que el archivo exista y su conexión a internet.");
+              }
+            }
 
             // ← ESTA ES LA FUNCIÓN QUE YA TIENES
             async function ensurePostsLoaded() {
@@ -442,12 +685,12 @@
                 try {
                     postes = await loadCSVFromZip(ZIP_NAME);
                     postsLoaded = true;
-                    setPostsCount(postes.length);
-                    elBase.textContent = `${ZIP_NAME} (${postes.length} pts)`;
+                    // setPostsCount(postes.length);
+                    if (elBase) elBase.textContent = `${ZIP_NAME} (${postes.length} pts)`;
                 } catch (e) {
                     console.warn("No se pudo cargar postes.csv.zip automáticamente:", e);
-                    elBase.textContent = `${ZIP_NAME} (no cargado)`;
-                    alert("No se pudo cargar postes.csv.zip. Puedes cargar CSV(s) manualmente.");
+                    if (elBase) elBase.textContent = `${ZIP_NAME} (no cargado)`;
+                    alert("Error de carga, revise su conexión o contacte al admnistrador");
                 }
             }
 
@@ -527,6 +770,32 @@
                 lines.push(`FIN;${end[1].toFixed(6)};${end[0].toFixed(6)}`);
                 return lines.join("\n");
             }
+            // === Tabla de coordenadas (visualización profesional) ===
+
+                // Devuelve la lista de postes incluyendo INICIO y FIN
+                function rowsWithEnds() {
+                  if (!line) return [];
+                  const start = { name: "INICIO", lat: line.geometry.coordinates[0][1], lon: line.geometry.coordinates[0][0] };
+                  const end   = { name: "FIN",    lat: line.geometry.coordinates[line.geometry.coordinates.length - 1][1],
+                                               lon: line.geometry.coordinates[line.geometry.coordinates.length - 1][0] };
+                  return [start, ...filtered, end];
+                }
+                
+                // Dibuja la tabla de coordenadas en pantalla
+                function renderCoordTable() {
+                  const tbody = document.querySelector("#coordTable tbody");
+                  if (!tbody) return;
+                
+                  const rows = rowsWithEnds();
+                  tbody.innerHTML = rows.map(r => `
+                    <tr>
+                      <td>${r.name ?? ""}</td>
+                      <td>${(r.lat ?? 0).toFixed(6)}</td>
+                      <td>${(r.lon ?? 0).toFixed(6)}</td>
+                    </tr>
+                  `).join("");
+                }
+
 
             function escapeXml(s) { return s.replace(/[<>&'"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c])); }
 
@@ -560,6 +829,67 @@
                 const dif = generatedLenM - originalLenM;
                 const f = n => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
                 setCompareText(`Original: ${f(originalLenM)} m | Generada (uniendo postes): ${f(generatedLenM)} m | Δ: ${f(dif)} m`);
+            }
+            // ====== Cálculo de tramos por distancia (cumulativo) ======
+            const KV_THRESHOLDS = [100, 200, 300, 500, 1000];
+            
+            function distanceM(a, b){
+              // a, b: {lat, lon}
+              const pa = turf.point([a.lon, a.lat]);
+              const pb = turf.point([b.lon, b.lat]);
+              return turf.distance(pa, pb, { units: "kilometers" }) * 1000;
+            }
+            
+            function recalcSegmentStats(){
+              const spans = {
+                kv100:  document.getElementById("kv100"),
+                kv200:  document.getElementById("kv200"),
+                kv300:  document.getElementById("kv300"),
+                kv500:  document.getElementById("kv500"),
+                kv1000: document.getElementById("kv1000"),
+                kvMore: document.getElementById("kvMore"),
+                kvTotal: document.getElementById("kvTotal"),
+              };
+            
+              const zeroAll = () => {
+                Object.values(spans).forEach(el => el && (el.textContent = "0"));
+              };
+            
+              // Usa la lista con INICIO y FIN incluidos
+              const rows = rowsWithEnds();
+              if (!rows || rows.length < 2){ zeroAll(); return; }
+            
+              // Contadores por bin exclusivo
+              const counts = { kv100:0, kv200:0, kv300:0, kv500:0, kv1000:0, kvMore:0 };
+            
+              for (let i = 0; i < rows.length - 1; i++){
+                const a = rows[i], b = rows[i+1];
+                // Distancia geodésica (m)
+                const d = turf.distance(
+                  turf.point([a.lon, a.lat]),
+                  turf.point([b.lon, b.lat]),
+                  { units: "kilometers" }
+                ) * 1000;
+            
+                if (d < 100)        counts.kv100++;
+                else if (d < 200)   counts.kv200++;   // [100,200)
+                else if (d < 300)   counts.kv300++;   // [200,300)
+                else if (d < 500)   counts.kv500++;   // [300,500)
+                else if (d < 1000)  counts.kv1000++;  // [500,1000)
+                else                counts.kvMore++;  // ≥1000
+              }
+            
+              // Total de tramos = pares consecutivos
+              const totalTramos = rows.length - 1;
+            
+              // Escribir resultados
+              if (spans.kv100)  spans.kv100.textContent  = String(counts.kv100);
+              if (spans.kv200)  spans.kv200.textContent  = String(counts.kv200);
+              if (spans.kv300)  spans.kv300.textContent  = String(counts.kv300);
+              if (spans.kv500)  spans.kv500.textContent  = String(counts.kv500);
+              if (spans.kv1000) spans.kv1000.textContent = String(counts.kv1000);
+              if (spans.kvMore) spans.kvMore.textContent = String(counts.kvMore);
+              if (spans.kvTotal) spans.kvTotal.textContent = String(totalTramos);
             }
 
             // ---------- Eventos UI ----------
@@ -603,21 +933,7 @@
                 if (!line) { alert("No se encontró una LineString en el archivo."); return; }
                 setCompareText("—");
                 // PRECARGA la base justo después de cargar la línea
-                await ensurePostsLoaded();
-            });
-
-            // Carga manual de CSV(s) (fallback)
-            document.getElementById("filePosts").addEventListener("change", async (ev) => {
-                postes = [];
-                for (const file of ev.target.files) {
-                    const txt = await file.text();
-                    const arr = await parseCSVWithPapaAsync(txt);
-                    postes.push(...arr);
-                }
-                postsLoaded = true;
-                setPostsCount(postes.length);
-                elBase.textContent = `Cargados manualmente (${postes.length} pts)`;
-                alert("Base de postes cargada: " + postes.length + " puntos.");
+                await loadBaseWithSpinner();
             });
 
             document.getElementById("btnExtract").onclick = async () => {
@@ -630,6 +946,8 @@
                 document.getElementById("output").value = resultToTextOrdered(filtered);
                 setResultCount(filtered.length);
                 updateLengthComparison(filtered);
+                recalcSegmentStats();
+                renderCoordTable();
             };
 
             document.getElementById("btnCopy").onclick = async () => {
@@ -663,19 +981,53 @@
                 URL.revokeObjectURL(a.href);
             };
 
+            // --- Alternancia entre mapa normal y satelital ---
+            let mapMode = "normal";  // estado actual del mapa ("normal" o "satellite")
+            let tileLayerNormal, tileLayerSat;
+            
             document.getElementById("btnShowMap").onclick = () => {
                 const mapDiv = document.getElementById("map");
                 mapDiv.style.display = "block";
+                const btn = document.getElementById("btnShowMap");
+            
+                // Crear mapa si no existe
                 if (!map) {
                     map = L.map("map");
-                    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+                    tileLayerNormal = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                        maxZoom: 19,
+                        attribution: "© OpenStreetMap"
+                    }).addTo(map);
+            
+                    tileLayerSat = L.tileLayer(
+                        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                        {
+                            maxZoom: 19,
+                            attribution: "© Esri, Maxar, Earthstar Geographics"
+                        }
+                    );
+            
                     layerLine = L.geoJSON(null, { style: { color: "#0ea5e9", weight: 3 } }).addTo(map);
                     layerPostesFiltered = L.layerGroup().addTo(map);
                     map.setView([-9.4, -77.57], 12);
                 }
+            
+                // Alternar modo
+                if (mapMode === "normal") {
+                    map.removeLayer(tileLayerNormal);
+                    tileLayerSat.addTo(map);
+                    mapMode = "satellite";
+                    btn.textContent = "Ver mapa (OSM)";
+                } else {
+                    map.removeLayer(tileLayerSat);
+                    tileLayerNormal.addTo(map);
+                    mapMode = "normal";
+                    btn.textContent = "Ver satélite";
+                }
+            
+                // Redibujar elementos
                 layerLine.clearLayers();
                 layerPostesFiltered.clearLayers();
-
+            
                 if (line) {
                     layerLine.addData(line);
                     map.fitBounds(layerLine.getBounds(), { padding: [20, 20] });
@@ -691,16 +1043,18 @@
                 }
             };
 
+
             // Estado inicial
             setLineLoaded(false);
 
             // PRECARGA en segundo plano al cargar la página (sin bloquear la UI)
             window.addEventListener('load', () => {
-                if ('requestIdleCallback' in window) {
-                    requestIdleCallback(() => ensurePostsLoaded(), { timeout: 3000 });
-                } else {
-                    setTimeout(() => ensurePostsLoaded(), 1200);
-                }
+              // precargar con spinner (sin bloquear la UI)
+              if ('requestIdleCallback' in window) {
+                requestIdleCallback(() => loadBaseWithSpinner(), { timeout: 3000 });
+              } else {
+                setTimeout(() => loadBaseWithSpinner(), 300);  // arranque rápido
+              }
             });
 
             // ======================== ADICIÓN JS: Diseño de postes ========================
@@ -1025,7 +1379,8 @@
 
                 // 5) Refrescar selects (lista creció)
                 refreshDesignSelectors();
-
+                recalcSegmentStats();
+                renderCoordTable();
                 alert("Postes diseñados insertados en el resultado.");
             });
 
