@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BITEL MT pole extractor v5</title>
+    <title>BITEL MT pole extractor v6</title>
 
     <!-- Anti-cache del HTML -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -471,7 +471,7 @@
             <button class="btn" id="btnCopy">Copiar</button>
             <button class="btn" id="btnDownloadTXT">Descargar TXT</button>
             <button class="btn" id="btnDownloadKMZ">Descargar KMZ</button>
-            <button class="btn secondary" id="btnShowMap">Ver en mapa</button>
+            <button class="btn secondary" id="btnShowMap">Ver satélite</button>
         </div>
 
         <div class="card">
@@ -577,6 +577,36 @@
                 al resultado (TXT/KMZ se actualizarán). Puedes repetir cuantas veces quieras.
             </div>
         </div>
+    
+    <!-- === TARJETA: Eliminar postes (por nombre o rango) === -->
+    <div id="deleteCard" class="card" style="display:none;">
+      <h3 style="margin:6px 0 12px;">Eliminar postes</h3>
+    
+      <!-- Modo: 1 poste -->
+      <div class="row" style="margin-bottom:10px;">
+        <label class="pill">Selecciona 1 poste:
+          <select id="delOneSelect"></select>
+        </label>
+        <button class="btn" id="btnDeleteOne" title="Eliminar solo el poste seleccionado">Eliminar seleccionado</button>
+      </div>
+    
+      <!-- Modo: rango -->
+      <div class="row" style="margin-bottom:10px;">
+        <label class="pill">Desde:
+          <select id="delFromSelect"></select>
+        </label>
+        <label class="pill">Hasta:
+          <select id="delToSelect"></select>
+        </label>
+        <button class="btn secondary" id="btnDeleteRange" title="Eliminar un rango inclusive">Eliminar rango</button>
+      </div>
+    
+      <div class="muted" style="font-size:12px;">
+        * Solo elimina elementos del resultado (<b>filtered</b>). Los marcadores <b>INICIO</b> y <b>FIN</b> no se tocan.<br>
+        * El rango es inclusivo. Si inviertes el orden, se corrige automáticamente.
+      </div>
+    </div>
+
 
     </div> <!-- /.page -->
     <script>
@@ -907,7 +937,34 @@
               if (spans.kvMore) spans.kvMore.textContent = String(counts.kvMore);
               if (spans.kvTotal) spans.kvTotal.textContent = String(totalTramos);
             }
+            
+            function deleteByIndices(indices) {
+              if (!Array.isArray(indices) || !indices.length) return;
+            
+              // Crear un set para O(1)
+              const idxSet = new Set(indices);
+            
+              // Filtrar manteniendo el orden
+              const prevLen = filtered.length;
+              filtered = filtered.filter((_, i) => !idxSet.has(i));
+            
+              // Si no cambió nada, salir
+              if (filtered.length === prevLen) return;
+            
+              // 🔁 Recalcular y refrescar TODA la UI derivada
+              setResultCount(filtered.length);
+              document.getElementById("output").value = resultToTextOrdered(filtered);
+              updateLengthComparison(filtered);
+              recalcSegmentStats();
+              renderCoordTable();
+              redrawAllPostsColoring();
+            
+              // Selectores dependientes del contenido
+              refreshDesignSelectors();
+              maybeShowDeleteCard();
 
+            }
+            
             // ---------- Eventos UI ----------
             document.getElementById("btnPickLine").onclick = () => document.getElementById("fileLine").click();
 
@@ -953,22 +1010,37 @@
             });
 
             document.getElementById("btnExtract").onclick = async () => {
-                if (!line) { alert("Carga primero la LÍNEA (KMZ/KML)."); return; }
-                if (!postsLoaded) { await ensurePostsLoaded(); if (!postsLoaded) return; }
-
-                const radius = Number(document.getElementById("radius").value) || 20;
-                  filtered = computeAlongLine(radius).map(p => ({
-                    ...p,
-                    designed: false,
-                    dtype: "mt"
-                  }));
-
-                document.getElementById("output").value = resultToTextOrdered(filtered);
-                setResultCount(filtered.length);
-                updateLengthComparison(filtered);
-                recalcSegmentStats();
-                renderCoordTable();
+              if (!line) { alert("Carga primero la LÍNEA (KMZ/KML)."); return; }
+              if (!postsLoaded) { await ensurePostsLoaded(); if (!postsLoaded) return; }
+            
+              const radius = Number(document.getElementById("radius").value) || 20;
+              filtered = computeAlongLine(radius).map(p => ({
+                ...p,
+                designed: false,
+                dtype: "mt"
+              }));
+            
+              document.getElementById("output").value = resultToTextOrdered(filtered);
+              setResultCount(filtered.length);
+              updateLengthComparison(filtered);
+              recalcSegmentStats();
+              renderCoordTable();
+            
+              // ✅ Marca banderas ANTES del toggle de tarjetas
+              hasExtracted = true;
+              showMap("satellite");
+              hasShownMap = true;
+            
+              ensureDesignLayer();
+              redrawDesignLayer();
+            
+              // ✅ Ahora sí, con ambas banderas en true
+              refreshDesignSelectors();
+              maybeShowDesignCard();
+              maybeShowDeleteCard();
+              fitToDataStrict();
             };
+
 
             document.getElementById("btnCopy").onclick = async () => {
                 const txt = document.getElementById("output").value || "";
@@ -1004,60 +1076,88 @@
             // --- Alternancia entre mapa normal y satelital ---
             let mapMode = "normal";  // estado actual del mapa ("normal" o "satellite")
             let tileLayerNormal, tileLayerSat;
+
+            function showMap(preferred = "satellite") {
+              const mapDiv = document.getElementById("map");
+              mapDiv.style.display = "block";
             
-            document.getElementById("btnShowMap").onclick = () => {
-                const mapDiv = document.getElementById("map");
-                mapDiv.style.display = "block";
-                const btn = document.getElementById("btnShowMap");
+              // Crear mapa y capas una sola vez
+              if (!map) {
+                map = L.map("map");
+                tileLayerNormal = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                  maxZoom: 19,
+                  attribution: "© OpenStreetMap"
+                }).addTo(map);
             
-                // Crear mapa si no existe
-                if (!map) {
-                    map = L.map("map");
-                    tileLayerNormal = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                        maxZoom: 19,
-                        attribution: "© OpenStreetMap"
-                    }).addTo(map);
+                tileLayerSat = L.tileLayer(
+                  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                  { maxZoom: 19, attribution: "© Esri, Maxar, Earthstar Geographics" }
+                );
             
-                    tileLayerSat = L.tileLayer(
-                        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                        {
-                            maxZoom: 19,
-                            attribution: "© Esri, Maxar, Earthstar Geographics"
-                        }
-                    );
+                layerLine = L.geoJSON(null, { style: { color: "#0ea5e9", weight: 3 } }).addTo(map);
+                layerPostesFiltered = L.layerGroup().addTo(map);
+                map.setView([-9.4, -77.57], 12);
+              }
             
-                    layerLine = L.geoJSON(null, { style: { color: "#0ea5e9", weight: 3 } }).addTo(map);
-                    layerPostesFiltered = L.layerGroup().addTo(map);
-                    map.setView([-9.4, -77.57], 12);
-                }
+              // 👇 MUY IMPORTANTE: el mapa estaba oculto → recalcula tamaño real
+              map.invalidateSize();
             
-                // Alternar modo
-                if (mapMode === "normal") {
-                    map.removeLayer(tileLayerNormal);
-                    tileLayerSat.addTo(map);
-                    mapMode = "satellite";
-                    btn.textContent = "Ver mapa (OSM)";
-                } else {
-                    map.removeLayer(tileLayerSat);
-                    tileLayerNormal.addTo(map);
-                    mapMode = "normal";
-                    btn.textContent = "Ver satélite";
-                }
+              // Cambiar a modo solicitado
+              const btn = document.getElementById("btnShowMap");
+              if (preferred === "satellite" && mapMode !== "satellite") {
+                if (map.hasLayer(tileLayerNormal)) map.removeLayer(tileLayerNormal);
+                tileLayerSat.addTo(map);
+                mapMode = "satellite";
+                if (btn) btn.textContent = "Ver mapa (OSM)";
+              } else if (preferred === "normal" && mapMode !== "normal") {
+                if (map.hasLayer(tileLayerSat)) map.removeLayer(tileLayerSat);
+                tileLayerNormal.addTo(map);
+                mapMode = "normal";
+                if (btn) btn.textContent = "Ver satélite";
+              }
             
-                // Redibujar elementos
-                layerLine.clearLayers();
-                layerPostesFiltered.clearLayers();
+              // Redibujar contenidos
+              layerLine.clearLayers();
+              layerPostesFiltered.clearLayers();
             
-                if (line) {
-                    layerLine.addData(line);
-                    map.fitBounds(layerLine.getBounds(), { padding: [20, 20] });
-                }
-                if (filtered.length) {
-                    redrawAllPostsColoring();
-                    const group = L.featureGroup([layerLine, layerPostesFiltered]);
-                    map.fitBounds(group.getBounds(), { padding: [20, 20] });
-                }
-            };
+              if (line) layerLine.addData(line);
+              if (filtered.length) redrawAllPostsColoring();
+            
+              // Ajustar vista con datos válidos
+              fitToDataStrict();
+            }
+            
+            function fitToDataStrict(){
+              if (!map) return;
+            
+              const bounds = L.latLngBounds([]);
+            
+              // Agrega TODA la línea (si existe)
+              if (line && line.geometry && Array.isArray(line.geometry.coordinates)) {
+                line.geometry.coordinates.forEach(([lon, lat]) => {
+                  bounds.extend([lat, lon]);
+                });
+              }
+            
+              // Agrega los postes filtrados (si existen)
+              if (Array.isArray(filtered) && filtered.length) {
+                filtered.forEach(p => bounds.extend([p.lat, p.lon]));
+              }
+            
+              // Caso especial: solo 1 poste
+              if (Array.isArray(filtered) && filtered.length === 1) {
+                map.setView([filtered[0].lat, filtered[0].lon], 17);
+                return;
+              }
+            
+              // Encuaadre final
+              if (bounds.isValid()) {
+                map.fitBounds(bounds.pad(0.15));  // un poquito de margen
+              }
+            }
+
+
+
 
 
             // Estado inicial
@@ -1089,15 +1189,24 @@
             const btnInsert = document.getElementById("btnInsertDesign");
             const btnClear = document.getElementById("btnClearDesign");
             const elDesignCount = document.getElementById("designCount");
-
+            
+            // === Eliminar postes: estado y refs ===
+            const deleteCard = document.getElementById("deleteCard");
+            const selDelOne = document.getElementById("delOneSelect");
+            const selDelFrom = document.getElementById("delFromSelect");
+            const selDelTo = document.getElementById("delToSelect");
+            const btnDelOne = document.getElementById("btnDeleteOne");
+            const btnDelRange = document.getElementById("btnDeleteRange");
+            
             // === CATEGORÍAS (prefijo, color, spacing por defecto) ===
               const KML_STYLE = {
                 pbm: { id: "pt_pbm", color: "ff481de1" },
                 pb:  { id: "pt_pb",  color: "ff80726b" },
                 lt:  { id: "pt_lt",  color: "ff8b7464" },
-                mt:  { id: "pt_mt",  color: "ff81b910" },  // ✅ verde MT correcto
-                def: { id: "pt_def", color: "ff81b910" }   // fallback = verde MT
+                mt:  { id: "pt_mt",  color: "ff81b910" },
+                def: { id: "pt_def", color: "ff81b910" }
               };
+            
             const CATEGORY_CONFIG = {
               pbm: { label: "POSTE MADERA",      prefix: "PBM_DESIGN",  color: "#e11d48", spacing: 60 },
               pb:  { label: "Poste Existente",   prefix: "PB_estimate", color: "#6b7280", spacing: 40 },
@@ -1134,24 +1243,35 @@
                     ensureDesignLayer();
                 }
             }
+            
+            function setDeleteButtonsState() {
+              const hasData = Array.isArray(filtered) && filtered.length > 0;
+              if (btnDelOne)   btnDelOne.disabled   = !hasData;
+              if (btnDelRange) btnDelRange.disabled = !hasData;
+            }
+            
+            function maybeShowDeleteCard() {
+              // ✅ Mismo criterio de aparición que el card de diseño:
+              if (hasExtracted && hasShownMap) {
+                deleteCard.style.display = "block";
+                refreshDeleteSelectors();  // llena selects si hay data; los deja vacíos si no
+                setDeleteButtonsState();   // deshabilita botones si aún no hay postes
+              } else {
+                deleteCard.style.display = "none";
+              }
+            }
 
-            // Escucha adicional a botones existentes (NO se modifican los originales)
-            document.getElementById("btnExtract").addEventListener("click", () => {
-                hasExtracted = true;
-                // Si hay resultado, actualizar selectores
-                if (filtered && filtered.length) refreshDesignSelectors();
-                // Reset de previa al extraer de nuevo
-                clearDesignPreview();
-                maybeShowDesignCard();
-            });
+            document.getElementById("btnShowMap").onclick = () => {
+              // toggle simple entre normal/satélite
+              const next = (mapMode === "normal") ? "satellite" : "normal";
+              showMap(next);
+              hasShownMap = true;
+              ensureDesignLayer();
+              redrawDesignLayer();
+              maybeShowDesignCard();
+              maybeShowDeleteCard();
+            };
 
-            document.getElementById("btnShowMap").addEventListener("click", () => {
-                hasShownMap = true;
-                ensureDesignLayer();
-                // Redibujar previa (si la hubiera)
-                redrawDesignLayer();
-                maybeShowDesignCard();
-            });
 
             // Construye opciones de selects con los postes extraídos (ordenados por 'location')
             function refreshDesignSelectors() {
@@ -1182,11 +1302,30 @@
                 selStart.value = String(INICIO_VALUE);
                 selEnd.value = String(FIN_VALUE);
             }
-
-
-
-
-
+                // Rellena los selects de borrado con el contenido actual de 'filtered'
+                function refreshDeleteSelectors() {
+                  if (!filtered || !filtered.length) {
+                    selDelOne.innerHTML = "";
+                    selDelFrom.innerHTML = "";
+                    selDelTo.innerHTML = "";
+                    return;
+                  }
+                  // Cada opción muestra índice, nombre y lat/lon (evita ambigüedad por nombres repetidos)
+                  const opts = filtered.map((p, i) => {
+                    const lat = (p.lat ?? 0).toFixed(6);
+                    const lon = (p.lon ?? 0).toFixed(6);
+                    const nm = (p.name ?? "").toString();
+                    return `<option value="${i}">${i.toString().padStart(3,"0")} · ${nm} · ${lat}, ${lon}</option>`;
+                  }).join("");
+                
+                  selDelOne.innerHTML = opts;
+                  selDelFrom.innerHTML = opts;
+                  selDelTo.innerHTML = opts;
+                
+                  // Defaults razonables
+                  selDelFrom.value = "0";
+                  selDelTo.value = String(filtered.length - 1);
+                }
 
             // Capa de previsualización (rojo)
             function ensureDesignLayer() {
@@ -1439,6 +1578,7 @@
                 refreshDesignSelectors();
                 recalcSegmentStats();
                 renderCoordTable();
+                maybeShowDeleteCard();
                 alert("Postes diseñados insertados en el resultado.");
             });
 
@@ -1446,6 +1586,37 @@
             btnClear.addEventListener("click", () => {
                 clearDesignPreview();
             });
+            // Eliminar 1 poste
+            btnDelOne.addEventListener("click", () => {
+              if (!filtered?.length) { alert("No hay postes en el resultado."); return; }
+              const idx = parseInt(selDelOne.value, 10);
+              if (Number.isNaN(idx) || idx < 0 || idx >= filtered.length) {
+                alert("Selecciona un poste válido."); return;
+              }
+              if (!confirm(`¿Eliminar el poste:\n${filtered[idx].name} ?`)) return;
+              deleteByIndices([idx]);
+            });
+            
+            // Eliminar rango inclusivo
+            btnDelRange.addEventListener("click", () => {
+              if (!filtered?.length) { alert("No hay postes en el resultado."); return; }
+              let a = parseInt(selDelFrom.value, 10);
+              let b = parseInt(selDelTo.value, 10);
+              if ([a,b].some(Number.isNaN)) { alert("Selecciona un rango válido."); return; }
+              if (a > b) [a, b] = [b, a]; // corrige si está invertido
+            
+              // Chequeos de límites
+              a = Math.max(0, Math.min(a, filtered.length - 1));
+              b = Math.max(0, Math.min(b, filtered.length - 1));
+              if (a > b) { alert("Rango inválido."); return; }
+            
+              if (!confirm(`¿Eliminar los postes del índice ${a} al ${b} (inclusive)?`)) return;
+            
+              const indices = [];
+              for (let i = a; i <= b; i++) indices.push(i);
+              deleteByIndices(indices);
+            });
+
             // ====================== FIN ADICIÓN JS: Diseño de postes ======================
 
 
